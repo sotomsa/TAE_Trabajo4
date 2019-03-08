@@ -1,0 +1,78 @@
+---
+title: "Exploracion"
+date: "March 5, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# MNIST en formato CSV desde:
+# https://pjreddie.com/projects/mnist-in-csv/
+# mnist_train.csv (100Mb)
+# mnist_test.csv (17Mb)
+
+# MNIST con tidyverse desde
+# https://www.r-bloggers.com/exploring-handwritten-digit-classification-a-tidy-analysis-of-the-mnist-dataset/
+library(tidyverse)
+library(rsample)
+```
+
+
+# Cargamos los datos
+
+Los datos estan en los siguientes dos archivos.
+
+```{r}
+# Carguemos los archivos y luego escribamolos en un RData
+#train_raw <- read_csv("data/mnist_train.csv", col_names = FALSE)
+#test_raw <- read_csv("data/mnist_test.csv", col_names = FALSE)
+#save(train_raw, test_raw, file = "data/mnist_data.RData")
+# mnist_data.RData (20Mb)
+# Sigamos cargando los datos desde mnist_data.RData
+# que es mucho más rápido
+load(file = "data/mnist_data.RData")
+```
+
+Exploremos la información
+
+```{r}
+str(train_raw,max.level = 0)
+```
+
+En el conjunto de train tenemos 60k de imágenes. Cada fila tiene 785 columnas donde la primera columna es el dígito en la imágen y las otras 784 son los 28x28 pixeles de cada imágen.
+
+Cómo estan las proporciones de cada clase?
+
+```{r}
+train_raw %>% 
+  ggplot(aes(X1)) +
+  geom_bar() +
+  labs(title = "Número de instancias por Número")
+```
+
+Es un dataset bastante balanciado en el número de instancias para cada clase.
+
+```{r}
+# Transformando los datos para visualización
+pixels_gathered <- train_raw %>%
+  head(10000) %>%
+  rename(label = X1) %>%
+  mutate(instance = row_number()) %>%
+  gather(pixel, value, -label, -instance) %>%
+  tidyr::extract(pixel, "pixel", "(\\d+)", convert = TRUE) %>%
+  mutate(pixel = pixel - 2,
+         x = pixel %% 28,
+         y = 28 - pixel %/% 28)
+pixels_gathered
+```
+
+```{r}
+# Aprendiendo a visualizar imagenes en ggplot
+pixels_gathered %>%
+  filter(instance <= 12) %>%
+  ggplot(aes(x, y, fill = value)) +
+  geom_tile() +
+  facet_wrap(~ instance + label)
+```
+
+Estas son las primeras 12 instancias del dataset con su respectiva clase de dígito.
