@@ -15,6 +15,7 @@ knitr::opts_chunk$set(echo = TRUE)
 # https://www.r-bloggers.com/exploring-handwritten-digit-classification-a-tidy-analysis-of-the-mnist-dataset/
 library(tidyverse)
 library(rsample)
+library(Metrics)
 ```
 
 
@@ -76,3 +77,265 @@ pixels_gathered %>%
 ```
 
 Estas son las primeras 12 instancias del dataset con su respectiva clase de dígito.
+
+Ahora hagamos la conversion de (0-255) a la escala (0-1) y pongamos la primera columna como un factor llamdo label
+
+```{r}
+train <- train_raw %>% 
+  mutate_at(vars(X2:X785),funs(. / 255)) %>% 
+  rename(label = X1) %>% 
+  mutate(label = factor(label))
+test <- test_raw %>% 
+  mutate_at(vars(X2:X785),funs(. / 255)) %>% 
+  rename(label = X1) %>% 
+  mutate(label = factor(label))
+
+```
+
+# Tiempos de Entrenamiento y Predicción
+
+Cuando se trabaja con tantos datos, es recomendable muestrear los datos totales y trabajar con menos datos. Primero tratemos de evaluar los tiempos de entrenamiento y predicción para diferentes conjuntos de re-muestreo.
+
+## SVM
+
+Empecemos con un modeo de Maquine de Soportes Vectoriales.
+
+### Pruebas usando datos en dataframe
+
+Se demora 1.3 minutos entrenando un SVM con 6000 muestras. Se demora unos 30 segundos entrenando un modelo con 3000 muestras.
+
+```{r}
+# ENsayemos los tiempos de entrenamiento
+d <- train %>% sample_n(3000)
+start_time <- Sys.time()
+mod <- kernlab::ksvm(label ~ . , data = d, C = 100)
+end_time <- Sys.time()
+end_time - start_time
+```
+
+Se demora 53 segundos prediciendo 6000 muestras con el modelo entrenado anteriormente. Se demora unos 20 segunos clasificando 3000 muestras.
+
+```{r}
+start_time <- Sys.time()
+pred <- kernlab::predict(mod,(d %>% select(-label)))
+end_time <- Sys.time()
+end_time - start_time
+```
+
+### Pruebas usando datos en forma de matriz
+
+Ahora ensayemos convirtiendo los dataframe a matrix primero. 
+
+Con 6000 datos, se demora 1.2 minutos entrenando el SVM vs 1.3 minutos usando un dataframe. Se demora los mismo 30 segundos entrenando un modelo con 3000 datos.
+
+```{r, warning=FALSE}
+# ENsayemos los tiempos de entrenamiento
+n <- 3000
+d <- train %>% sample_n(n)
+y <- d$label
+x <- as.matrix(d %>% select(X2:X785))
+start_time <- Sys.time()
+mod <- kernlab::ksvm(x,y, C = 100)
+end_time <- Sys.time()
+end_time - start_time
+```
+
+Se demora los mismos 53 segundos prediciendo 6000 datos y los mismos 20 segundos para predecir 3000 datos
+
+```{r}
+start_time <- Sys.time()
+pred <- kernlab::predict(mod,x)
+end_time <- Sys.time()
+end_time - start_time
+```
+
+# Modelos
+
+## Creación de Dataframe para Validación Cruzada
+Hagamos explicitos los dataframes de analysis y assessment
+
+```{r}
+# Empecemos con una version que use 5 pliegues sobre el 10% de los datos
+v <- 2 # Número de Pliegues
+r <- 2 # Número de Repeteciones
+frac <- 0.1
+set.seed(71265)
+cv_data <- vfold_cv(train %>%
+                      sample_frac(frac) ,
+                    v = v,
+                    repeats = r) %>% 
+  mutate(analysis = map(splits,~analysis(.x)),
+         assessment = map(splits,~assessment(.x)),
+         y.assessment = map(assessment,~factor(.x$label)))
+cv_data
+```
+
+## Configuración Procesamiento en Paralelo
+
+Ensayemos hacer el procesamiento en paralelo. Esta forma de procesamiento en paralelo está explicada en el siguiente enlace:
+https://www.r-bloggers.com/speed-up-your-code-parallel-processing-with-multidplyr/
+
+Detectemos el número de cores
+
+```{r}
+library(parallel)
+cl <- detectCores()
+cl
+```
+
+Creemos un cluster con multidplyr
+
+```{r}
+library(multidplyr)
+cluster <- create_cluster(cores = cl)
+cluster
+```
+
+## Modelo con SVM
+
+### Modelo Paralelizado
+
+Ahora creemos un dataframe que tenga los valores de los parametros a probar
+
+```{r}
+modeloSVM <- cv_data %>% 
+  crossing(C = c(10,100))
+```
+
+Asignemos los datos de cada pliegue a un core
+
+```{r}
+group <- rep(1:cl, length.out = nrow(modeloSVM))
+modeloSVM <- bind_cols(tibble(group), modeloSVM)
+```
+
+Ahora creemos las particiones de los datos para cada cluster
+
+```{r}
+by_group <- modeloSVM %>%
+    partition(group, cluster = cluster)
+```
+
+Parece como el tibble original, pero en realidad, el resultado es en formato party_df donde los datos estan separdos en 5 grupos de 4 (que es el número de procesadores)
+
+Ahora, alistemos las funciones, variables y librerias que necesita cada uno de los componentes del cluster
+
+```{r}
+by_group %>%
+    # Assign libraries
+    cluster_library("tidyverse") %>%
+    cluster_library("kernlab") %>%
+    cluster_library("Metrics")
+```
+
+Verifiquemos que quedaron bien asigandas las librearias
+
+```{r}
+cluster_eval(by_group, search())[[1]]
+```
+
+Ahora, corramos el codigo en paralelo
+
+```{r}
+start <- proc.time() # Start clock
+modeloSVM_parallel <- by_group %>% # Use by_group party_df
+    mutate(modeloSVM = map2(analysis,C,~kernlab::ksvm(label ~ . , 
+                                                 data = .x, 
+                                                 C = .y)),
+           y.pred = map2(modeloSVM,assessment, ~kernlab::predict(.x,.y)),
+           validate_ce = map2_dbl(y.assessment,y.pred,~ce(.x,.y))) %>%
+    collect() %>% # Special collect() function to recombine partitions
+    as_tibble()   # Convert to tibble
+time_elapsed_parallel <- proc.time() - start # End clock
+time_elapsed_parallel
+```
+
+El mismo proceso se demoró 17 minutos con procesamiento en serie. En los 4 procesadores, el mismo proceso, se demoró solo 8 minutos.
+
+Veamos el resultado
+
+```{r}
+if (r==1){
+  results <- modeloSVM_parallel %>% 
+    group_by(C) %>% 
+    summarise(meanCE = mean(validate_ce))
+} else {
+  results <- modeloSVM_parallel %>% 
+    group_by(C,id) %>% 
+    summarise(meanCE = mean(validate_ce)) %>% 
+    group_by(C) %>% 
+    summarise(meanCE = mean(meanCE),
+              var = var(meanCE))
+}
+results
+```
+
+Mejor C
+
+```{r}
+bestC <- results %>% 
+  filter( meanCE == min(meanCE) ) %>% 
+  .$C
+bestC
+```
+
+### Modelo sin Paralelizar
+
+Ahora veamos el mismo procesamiento en serie con un procesador
+
+```{r, warning=FALSE}
+# Validemos para 3 valores de C. 
+# Este procesamiento tomó 17 minutos.
+start_time <- Sys.time()
+modeloSVM <- cv_data %>% 
+  crossing(C = c(1,10,100)) %>% 
+  mutate(modeloSVM = map2(analysis,C,~kernlab::ksvm(label ~ . , 
+                                                 data = .x, 
+                                                 C = .y)),
+         y.pred = map2(modeloSVM,assessment, ~kernlab::predict(.x,.y)),
+         validate_ce = map2_dbl(y.assessment,y.pred,~ce(.x,.y)))
+end_time <- Sys.time()
+end_time - start_time
+```
+
+Ahora se demoro 17 miuntos con el 10 porciento de los datos, 5 pliegues y la evalucion de 3 parametros (para un total del 15 modelos)
+
+```{r}
+modeloSVM %>% 
+  group_by(C) %>% 
+  summarize(meanCe = mean(validate_ce))
+```
+
+### Rendimiento en Test
+
+Escojamos el mejor parametro C del modelo en entrenamiento y miremos como le va al modelo en el conjunto de prueba.
+
+```{r}
+bestC <- modeloSVM %>% 
+  group_by(C) %>% 
+  summarize(meanCe = mean(validate_ce)) %>% 
+  ungroup() %>% 
+  filter( meanCe == min(meanCe) ) %>% 
+  .$C
+bestC
+```
+
+Entrenemos un modelo sobre todos los datos de entrenamiento y miremos como le va en testing
+
+```{r}
+# Hagamos un modelo con una fracion de los datos de entrenamiento
+d <- train %>% sample_frac(frac)
+start_time <- Sys.time()
+mod <- kernlab::ksvm(label ~ . , data = d, C = bestC)
+pred <- kernlab::predict(mod,(test %>% select(-label)))
+errorSVMTesting <- ce(test$label,pred)
+end_time <- Sys.time()
+end_time - start_time
+```
+
+Error en Testing
+
+```{r}
+errorSVMTesting
+```
+
