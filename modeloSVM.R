@@ -97,8 +97,8 @@ bestC <- results %>%
 bestC
 
 start_time <- proc.time()
-mod <- kernlab::ksvm(label ~ . , data = train, C = bestC)
-pred <- kernlab::predict(mod,(test %>% select(-label)))
+modSVM <- kernlab::ksvm(label ~ . , data = train, C = bestC)
+pred <- kernlab::predict(modSVM,(test %>% select(-label)))
 errorSVMTesting <- ce(test$label,pred)
 end_time <- proc.time()
 test_time <- end_time - start_time
@@ -106,4 +106,4 @@ test_time
 
 errorSVMTesting
 
-save(mod,errorSVMTesting,file = "SVMTest.RData")
+save(modSVM,errorSVMTesting,file = "SVMTest.RData")
