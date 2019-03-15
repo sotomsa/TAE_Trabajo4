@@ -44,7 +44,7 @@ shinyServer(function(input, output) {
         imgIn <- img
         dim(imgIn) <- NULL
         names(imgIn) <- namesTrain
-        imgAsDf <-as_tibble(as.data.frame(t(imgIn)))
+        imgAsDf <- as.data.frame(t(imgIn))
         pred <- kernlab::predict(modSVM,imgAsDf)
         return(levels(pred)[pred])
       }
