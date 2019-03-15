@@ -8,3 +8,11 @@ Los modelos a entrenar y comparar son:
 - Bosques aleatorios
 - Máquinas de soporte vectorial
 - Redes neuronales
+
+En el siguiente link: 
+
+[https://sotomsa.shinyapps.io/Trabajo4/](https://sotomsa.shinyapps.io/Trabajo4/)
+
+Podras encontrar una aplicación Web (Shiny) donde puedes probar los modelos de clasificación de números desde el navegador.
+
+NOTA: Por Ahora, esta aplicación solo cuenta con la clasificación de números usando un SVM
