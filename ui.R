@@ -17,7 +17,7 @@ shinyUI(fluidPage(
                                 p("Esta es una pequeña apicación para mostrar ",
                                   "el funcionamiento de algunos métodos de ",
                                   "Aprendizaje Estadístico (Machine Learning) ",
-                                  "para el reconocimiento de número en imágnes."),
+                                  "para el reconocimiento de número en imágenes."),
                                 button = FALSE),
                       h1("Más información"),
                       p("Los modelos fueron entrenados usando los datos ",
@@ -26,12 +26,14 @@ shinyUI(fluidPage(
                         "dibujar un número y luego ver número piensas estos modelos ",
                         "que escribiste."),
                       p("Información Técnica se pueden encontrar en el éste ",
-                        a("Reporte", href=enlaceReporte),
-                        " y en el siguiente video."),
+                        a("Reporte", href=enlaceReporte)
+                        ),
                       h1("Probando los Modelos en Tiempo Real"),
+                      p("Escribe un número usando el cursor en la caja siguiente y luego ",
+                        "pulsar el botón enviar."),
                       tags$div(class = "image",tags$div(id = "canvasSimpleDiv")),
                       actionButton("clearCanvasSimple", "Borrar"),
-                      actionButton("sendCanvasSimple", "Send"),
+                      actionButton("sendCanvasSimple", "Enviar"),
                       p("Según el modelo SVM, el número ingresado parece un:",textOutput("prediccionSVM"))
                       )
              )
