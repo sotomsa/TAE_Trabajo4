@@ -16,6 +16,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(rsample)
 library(Metrics)
+library(scales)
 ```
 
 
@@ -98,14 +99,14 @@ Cuando se trabaja con tantos datos, es recomendable muestrear los datos totales 
 
 ## SVM
 
-Empecemos con un modeo de Maquine de Soportes Vectoriales.
+Empecemos con un modeo de Máquinas de Soporte Vectorial.
 
 ### Pruebas usando datos en dataframe
 
 Se demora 1.3 minutos entrenando un SVM con 6000 muestras. Se demora unos 30 segundos entrenando un modelo con 3000 muestras.
 
-```{r}
-# ENsayemos los tiempos de entrenamiento
+```{r, warning=FALSE}
+# Ensayemos los tiempos de entrenamiento
 d <- train %>% sample_n(3000)
 start_time <- Sys.time()
 mod <- kernlab::ksvm(label ~ . , data = d, C = 100)
@@ -306,6 +307,7 @@ modeloSVM %>%
   summarize(meanCe = mean(validate_ce))
 ```
 
+
 ### Rendimiento en Test
 
 Escojamos el mejor parametro C del modelo en entrenamiento y miremos como le va al modelo en el conjunto de prueba.
@@ -322,7 +324,7 @@ bestC
 
 Entrenemos un modelo sobre todos los datos de entrenamiento y miremos como le va en testing
 
-```{r}
+```{r, warning=FALSE}
 # Hagamos un modelo con una fracion de los datos de entrenamiento
 d <- train %>% sample_frac(frac)
 start_time <- Sys.time()
@@ -333,9 +335,55 @@ end_time <- Sys.time()
 end_time - start_time
 ```
 
-Error en Testing
+Se demoró casi 3 minutos entrenando un modelo con el 10% de los datos y encontrando la tasa de clasificación incorrecta en las 10K imágenes del conjunto de prueba. Miremos el error de este modelo
 
 ```{r}
 errorSVMTesting
 ```
 
+No es un mal error sabiendo que el modelo se entrenos solo con el 10 porciento de los datos.
+
+### Modelo Entrenado en la Nube
+
+El código para escoger el mejor parametro y el modelo final esta en el archivo ModeloSVM.R
+
+#### Entrenamiento en validación cruzada
+
+A continuación estan los datos del modelo entrenado en la nube y guardado en el archivo: SVMTrain_v5_r2_frac10percent.RData
+
+```{r}
+load("SVMTrain_v5_r2_frac10percent.RData")
+modeloSVM_parallel %>% 
+  group_by(C,id) %>% 
+  summarise(meanCE = mean(validate_ce)) %>% 
+  ggplot(aes(C,meanCE)) +
+  geom_point() +
+  scale_x_log10() +
+  labs(title = "Tasa Clasificación Incorrecta en 2 Repeticiones",
+       x = "Valor Parametro C",
+       y = "Tasa de Clasificación Incorrecta") +
+  scale_y_continuous(labels = percent_format())
+```
+
+
+Como el entrenamiento del SVM en todo el conjunto de entrenamiento es tan costoso en memoeria computacionalmente, carguemos el modelo entrenado en Amazon EC usando todos los datos de entrenamiento. 
+
+#### Validación
+
+Ahora miremos el tiempo de entrenamiento y error del modelo entrenado en la nube con todos los datos y el parametro C en 100.
+
+```{r}
+load("SVMTest_C100_allData.RData")
+# Miremos primero cuanto se demoro en entrenar
+test_time
+```
+
+Esto quiere decir que se demoro unos 32 minutos el entrenamiento. Lo que es aproximademente 10 veces más de lo que nos demoramos entrenando el mismo modelo con el 10% de los datos. Las pruebas de entrenamiento del modelo con todos los datos en un portatil convencionaal no fue exitoso por la gran cantidad de memoria necesaria.
+
+Ahora miremos el error en el conjunto de prueba
+
+```{r}
+errorSVMTesting
+```
+
+Este modelo obtuvo un error del 1.76% de tasa de clasificación incorrecta.
