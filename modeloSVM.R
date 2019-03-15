@@ -24,9 +24,8 @@ test <- test_raw %>%
 
 # Generemos dataframe de validacion cruzada en
 # entrenamiento
-v <- 10 # Número de Pliegues
-r <- 5 # Número de Repeteciones
-frac <- 0.1
+v <- 5 # Número de Pliegues
+r <- 2 # Número de Repeteciones
 set.seed(71265)
 cv_data <- vfold_cv(train,
                     v = v,
