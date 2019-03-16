@@ -34,7 +34,8 @@ shinyUI(fluidPage(
                       tags$div(class = "image",tags$div(id = "canvasSimpleDiv")),
                       actionButton("clearCanvasSimple", "Borrar"),
                       actionButton("sendCanvasSimple", "Enviar"),
-                      p("Según el modelo SVM, el número ingresado parece un:",textOutput("prediccionSVM"))
+                      p("Según el modelo SVM, el número ingresado parece un:",textOutput("prediccionSVM")),
+                      plotOutput("dibujo",width = 200, height = 200)
                       )
              )
   ))

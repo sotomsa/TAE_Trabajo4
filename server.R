@@ -3,6 +3,7 @@ library(stringr)
 library(kernlab)
 library(OpenImageR)
 library(RCurl)
+library(pixmap)
 
 # Funcion para convertir de imagen en Base64 a png
 getImg <- function(txt) {
@@ -20,6 +21,28 @@ getImg <- function(txt) {
 
 shinyServer(function(input, output) {
   
+  output$dibujo <- renderPlot({
+    if(!is.null(input$countjs)){
+      imgURL <- str_sub(input$countjs,start = 23)
+      if(nchar(imgURL>0)){
+        #save(imgURL,file = "imagen.RData")
+        
+        # Convert from URL image to PNG image
+        img <- getImg(imgURL)
+        nr <- nrow(img)
+        nc <- ncol(img)
+        
+        # Get PNG data and Convert to (0-1) scale
+        img[is.na(img)] <- 0
+        img[img=="#000000"] <- 1
+        img <- as.numeric(img)
+        img <- (matrix(img, nrow = nr, ncol = nc))
+        
+        plot(pixmapGrey(t(img)))
+      }
+    }
+  })
+  
   output$prediccionSVM <-  renderText({
     if(!is.null(input$countjs)){
       imgURL <- str_sub(input$countjs,start = 23)
@@ -35,7 +58,7 @@ shinyServer(function(input, output) {
         img[is.na(img)] <- 0
         img[img=="#000000"] <- 1
         img <- as.numeric(img)
-        img <- matrix(img, nrow = nr, ncol = nc)
+        img <- (matrix(img, nrow = nr, ncol = nc))
         
         # Resize image
         img <- resizeImage(img,28,28)
