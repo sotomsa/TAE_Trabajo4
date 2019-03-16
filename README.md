@@ -15,4 +15,6 @@ En el siguiente link:
 
 Podras encontrar una aplicación Web (Shiny) donde puedes probar los modelos de clasificación de números desde el navegador.
 
-NOTA: Por Ahora, esta aplicación solo cuenta con la clasificación de números usando un SVM
+NOTAS: 
+- Por Ahora, esta aplicación solo cuenta con la clasificación de números usando un SVM.
+- El canvas para dibujar los números en la aplicación esta basada en: http://www.williammalone.com/articles/create-html5-canvas-javascript-drawing-app/
