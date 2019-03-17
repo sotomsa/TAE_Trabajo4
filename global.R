@@ -1,5 +1,7 @@
 load("SVMTest_C100_allData.RData")
 load(file="namesTrain.RData")
+load("glm_test_all.RData")
+
 
 # Funcion para convertir de imagen en Base64 a png
 getImg <- function(txt) {

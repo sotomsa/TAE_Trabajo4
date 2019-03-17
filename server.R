@@ -4,6 +4,8 @@ library(kernlab)
 library(OpenImageR)
 library(RCurl)
 library(pixmap)
+library(glmnet)
+library(glmnetUtils)
 
 # Funcion para convertir de imagen en Base64 a png
 getImg <- function(txt) {
@@ -64,6 +66,22 @@ shinyServer(function(input, output) {
       imgAsDf <- as.data.frame(t(imgIn))
       pred <- kernlab::predict(modSVM,imgAsDf)
       return(levels(pred)[pred])
+    }
+  })
+  
+  output$prediccionGLM <-  renderText({
+    img <- imgFromPage()
+    if(!is.null(img)){
+      # Resize image
+      img <- resizeImage(img,28,28)
+      
+      # Convert to dataframe format
+      imgIn <- img
+      dim(imgIn) <- NULL
+      names(imgIn) <- namesTrain
+      imgAsDf <- as.data.frame(t(imgIn))
+      pred <- predict(modGLM_All,imgAsDf, type = "class", s=modGLM_All$lambda[1])
+      return(pred)
     }
   })
 
