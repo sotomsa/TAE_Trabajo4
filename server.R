@@ -22,28 +22,13 @@ getImg <- function(txt) {
 shinyServer(function(input, output) {
   
   output$dibujo <- renderPlot({
-    if(!is.null(input$countjs)){
-      imgURL <- str_sub(input$countjs,start = 23)
-      if(nchar(imgURL>0)){
-        #save(imgURL,file = "imagen.RData")
-        
-        # Convert from URL image to PNG image
-        img <- getImg(imgURL)
-        nr <- nrow(img)
-        nc <- ncol(img)
-        
-        # Get PNG data and Convert to (0-1) scale
-        img[is.na(img)] <- 0
-        img[img=="#000000"] <- 1
-        img <- as.numeric(img)
-        img <- (matrix(img, nrow = nr, ncol = nc))
-        
-        plot(pixmapGrey(t(img)))
-      }
+    img <- imgFromPage()
+    if(!is.null(img)){
+      plot(pixmapGrey(t(img)))
     }
   })
   
-  output$prediccionSVM <-  renderText({
+  imgFromPage <- reactive({
     if(!is.null(input$countjs)){
       imgURL <- str_sub(input$countjs,start = 23)
       if(nchar(imgURL>0)){
@@ -60,17 +45,25 @@ shinyServer(function(input, output) {
         img <- as.numeric(img)
         img <- (matrix(img, nrow = nr, ncol = nc))
         
-        # Resize image
-        img <- resizeImage(img,28,28)
-        
-        # Convert to dataframe format
-        imgIn <- img
-        dim(imgIn) <- NULL
-        names(imgIn) <- namesTrain
-        imgAsDf <- as.data.frame(t(imgIn))
-        pred <- kernlab::predict(modSVM,imgAsDf)
-        return(levels(pred)[pred])
+        return(img)
       }
+    }
+    return(NULL)
+  })
+  
+  output$prediccionSVM <-  renderText({
+    img <- imgFromPage()
+    if(!is.null(img)){
+      # Resize image
+      img <- resizeImage(img,28,28)
+      
+      # Convert to dataframe format
+      imgIn <- img
+      dim(imgIn) <- NULL
+      names(imgIn) <- namesTrain
+      imgAsDf <- as.data.frame(t(imgIn))
+      pred <- kernlab::predict(modSVM,imgAsDf)
+      return(levels(pred)[pred])
     }
   })
 
