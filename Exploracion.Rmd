@@ -81,7 +81,7 @@ Estas son las primeras 12 instancias del dataset con su respectiva clase de díg
 
 Ahora hagamos la conversion de (0-255) a la escala (0-1) y pongamos la primera columna como un factor llamdo label
 
-```{r}
+```{r,eval=FALSE}
 train <- train_raw %>% 
   mutate_at(vars(X2:X785),funs(. / 255)) %>% 
   rename(label = X1) %>% 
@@ -90,8 +90,11 @@ test <- test_raw %>%
   mutate_at(vars(X2:X785),funs(. / 255)) %>% 
   rename(label = X1) %>% 
   mutate(label = factor(label))
-
 ```
+```{r,include=FALSE}
+load(file = "data/mnist_data_normalized.RData")
+```
+
 
 # Tiempos de Entrenamiento y Predicción
 
@@ -105,7 +108,7 @@ Empecemos con un modeo de Máquinas de Soporte Vectorial.
 
 Se demora 1.3 minutos entrenando un SVM con 6000 muestras. Se demora unos 30 segundos entrenando un modelo con 3000 muestras.
 
-```{r, warning=FALSE}
+```{r, warning=FALSE, cache=TRUE}
 # Ensayemos los tiempos de entrenamiento
 d <- train %>% sample_n(3000)
 start_time <- Sys.time()
@@ -116,7 +119,7 @@ end_time - start_time
 
 Se demora 53 segundos prediciendo 6000 muestras con el modelo entrenado anteriormente. Se demora unos 20 segunos clasificando 3000 muestras.
 
-```{r}
+```{r, cache=TRUE}
 start_time <- Sys.time()
 pred <- kernlab::predict(mod,(d %>% select(-label)))
 end_time <- Sys.time()
@@ -129,7 +132,7 @@ Ahora ensayemos convirtiendo los dataframe a matrix primero.
 
 Con 6000 datos, se demora 1.2 minutos entrenando el SVM vs 1.3 minutos usando un dataframe. Se demora los mismo 30 segundos entrenando un modelo con 3000 datos.
 
-```{r, warning=FALSE}
+```{r, warning=FALSE, cache=TRUE}
 # ENsayemos los tiempos de entrenamiento
 n <- 3000
 d <- train %>% sample_n(n)
@@ -143,7 +146,7 @@ end_time - start_time
 
 Se demora los mismos 53 segundos prediciendo 6000 datos y los mismos 20 segundos para predecir 3000 datos
 
-```{r}
+```{r,cache=TRUE}
 start_time <- Sys.time()
 pred <- kernlab::predict(mod,x)
 end_time <- Sys.time()
@@ -212,7 +215,7 @@ modeloSVM <- bind_cols(tibble(group), modeloSVM)
 
 Ahora creemos las particiones de los datos para cada cluster
 
-```{r}
+```{r,warning=FALSE}
 by_group <- modeloSVM %>%
     partition(group, cluster = cluster)
 ```
@@ -352,12 +355,15 @@ El código para escoger el mejor parametro y el modelo final esta en el archivo 
 A continuación estan los datos del modelo entrenado en la nube y guardado en el archivo: SVMTrain_v5_r2_frac10percent.RData
 
 ```{r}
-load("SVMTrain_v5_r2_frac10percent.RData")
-modeloSVM_parallel %>% 
+#load("SVMTrain_v5_r2_frac10percent.RData")
+load("SVMTrain_v5_r2_frac10percentRESULTS.RData")
+trainSVMResults %>% 
   group_by(C,id) %>% 
   summarise(meanCE = mean(validate_ce)) %>% 
   ggplot(aes(C,meanCE)) +
   geom_point() +
+  stat_summary(fun.y = mean, geom = "point", col = "red") +
+  stat_summary(fun.y = mean, geom = "line", col = "red", aes(group = 1)) +
   scale_x_log10() +
   labs(title = "Tasa Clasificación Incorrecta en 2 Repeticiones",
        x = "Valor Parametro C",
@@ -365,8 +371,8 @@ modeloSVM_parallel %>%
   scale_y_continuous(labels = percent_format())
 ```
 
-
-Como el entrenamiento del SVM en todo el conjunto de entrenamiento es tan costoso en memoeria computacionalmente, carguemos el modelo entrenado en Amazon EC usando todos los datos de entrenamiento. 
+En el gráfico, la linea roja es la tasa de media de clasificación incorrecta entre las repeticiones. 
+Como el entrenamiento del SVM en todo el conjunto de entrenamiento es tan costoso en memoria y computacionalmente, carguemos el modelo entrenado en Amazon EC usando todos los datos de entrenamiento. 
 
 #### Validación
 
@@ -387,3 +393,149 @@ errorSVMTesting
 ```
 
 Este modelo obtuvo un error del 1.76% de tasa de clasificación incorrecta.
+
+## Modelo con GLM Multinomial
+
+Hagamos un modelo GLM Multinomial con penalizacion elástica usando glment. Probemos cuanto se demora con el 5% de los datos y usando Lasso (alpha=1)
+
+```{r,eval=FALSE}
+n <- 3000
+d <- train %>% sample_n(n)
+start_glm <- Sys.time()
+modGLM <- glmnetUtils::glmnet(label ~ . , data = d, family = "multinomial", alpha = 1)
+end_glm <- Sys.time()
+glm_train_time <-  end_glm - start_glm
+glm_train_time
+```
+```{r,include=FALSE}
+#save(modGLM,glm_train_time,file = "cache/glm_tiempo_3000.RData")
+load("cache/glm_tiempo_3000.RData")
+glm_train_time
+```
+
+Ahora como podemos predecir
+
+```{r,eval=FALSE}
+start_glm <- Sys.time()
+y.pred <- predict(modGLM,test, type = "class", s=modGLM$lambda[1])
+errorGLMTest <- ce(test$label,y.pred)
+glm_test_time <-  Sys.time() - start_glm
+glm_test_time
+errorGLMTest
+```
+```{r,include=FALSE}
+save(errorGLMTest,glm_test_time,file = "cache/glm_test_3000.RData")
+load("cache/glm_test_3000.RData")
+glm_test_time
+errorGLMTest
+```
+
+
+Esto quiere decir que un modelo con todos los datos se puede demorar una media hora. Carguemos los datos que se usaron en el servidor para que sirvan de base para el resto de modelos.
+
+```{r}
+load("cv_data.RData")
+cv_data
+```
+
+Estos datos corresponden a 5 pliegues y dos repeticiones usando el 10% de los datos.
+
+Ahora entrenemos un GLM en estos datos para 3 valores de alpha (0,0.5,1). Esto nos da un modelo Ridge, otro entre Ridge y Lasso, y finalmente, uno con Lasso.
+
+```{r,warning=FALSE,eval=FALSE}
+library(parallel)
+cl <- detectCores()
+library(multidplyr)
+cluster <- create_cluster(cores = cl)
+
+# Agregemos los diferentes modelos a calcular
+modeloGLM <- cv_data %>% 
+  crossing(alpha = c(0,0.5,1))
+
+group <- rep(1:cl, length.out = nrow(modeloGLM))
+modeloGLM <- bind_cols(tibble(group), modeloGLM)
+
+by_group <- modeloGLM %>%
+    partition(group, cluster = cluster) 
+
+by_group %>%
+    cluster_library("tidyverse") %>%
+    cluster_library("glmnet") %>%
+    cluster_library("glmnetUtils") %>%
+    cluster_library("Metrics")
+
+start <- Sys.time() # Start clock
+modeloGLM_parallel <- by_group %>% # Use by_group party_df
+    mutate(modeloGLM = map2(analysis,alpha,~glmnetUtils::glmnet(label ~ . , 
+                                                 data = .x,
+                                                 family = "multinomial",
+                                                 alpha = .y)),
+           lambda = map_dbl(modeloGLM,~(.x$lambda[1])),
+           y.pred = map2(modeloGLM,assessment, ~predict(.x,.y, type = "class", s = .x$lambda[1])),
+           validate_ce = map2_dbl(y.assessment,y.pred,~ce(.x,.y))) %>%
+    collect() %>%
+    as_tibble()
+time_GLM_parallel <- Sys.time() - start
+time_GLM_parallel
+```
+```{r,include=FALSE}
+#save(time_GLM_parallel,modeloGLM_parallel,file = "cache/trainModeloGLM.RData")
+load("cache/trainModeloGLM.RData")
+time_GLM_parallel
+```
+
+Le tomó una hora y 6 minutos calcular estos 30 modelos con 4 procesadores.
+
+```{r}
+modeloGLM_parallel2 <- modeloGLM_parallel %>%
+  mutate(lambda = map_dbl(modeloGLM,~(.x$lambda[1])),
+           y.pred = map2(modeloGLM,assessment, ~predict(.x,.y, type = "class", s = .x$lambda[1])),
+           validate_ce = map2_dbl(y.assessment,y.pred,~ce(.x,.y))) %>% 
+  select(id,id2,lambda,validate_ce,alpha) %>% 
+  arrange(id,id2,alpha)
+```
+
+
+Veamos el resultado
+
+```{r}
+results <- modeloGLM_parallel2 %>% 
+  group_by(alpha,id) %>% 
+  summarise(meanCE = mean(validate_ce),
+            lambda = mean(lambda)) %>% 
+  group_by(alpha) %>% 
+  summarise(meanCE = mean(meanCE),
+            lambda = mean(lambda))
+results
+```
+
+Parece que no hubiera diferencia en el alpha. Escojamos un alpha de 0.5.
+
+Ahora entrenemos un modelo GLM con estos parametros.
+
+```{r,eval=FALSE}
+start_glm <- Sys.time()
+modGLM_All <- glmnetUtils::glmnet(label ~ . , data = train, family = "multinomial", alpha = 0.5)
+glm_test_time <-  Sys.time() - start_glm
+glm_test_time
+```
+```{r,include=FALSE}
+#save(modGLM_All,glm_test_time,file = "cache/glm_test_all.RData")
+load("cache/glm_test_all.RData")
+glm_test_time
+```
+
+Se demoró una hora entrenando un modelo GLM en todo el conjunto de entrenamiento
+
+```{r,eval=FALSE}
+y.pred <- predict(modGLM_All,test, type = "class", s=modGLM_All$lambda[1])
+errorGLMTest_All <- ce(test$label,y.pred)
+errorGLMTest_All
+```
+```{r,include=FALSE}
+#save(errorGLMTest_All,glm_test_time,file = "cache/glm_test_all.RData")
+load("cache/glm_test_all.RData")
+errorGLMTest_All
+```
+
+El modelo obtuvo una tasa de clasificación correcta del 88.6% lo que lo pone muy por debajo del SVM.
