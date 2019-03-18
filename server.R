@@ -23,6 +23,8 @@ getImg <- function(txt) {
 
 shinyServer(function(input, output) {
   
+  # Funcion para hacer el plot de la imágen
+  # de nuevo a la pagina
   output$dibujo <- renderPlot({
     img <- imgFromPage()
     if(!is.null(img)){
@@ -30,6 +32,9 @@ shinyServer(function(input, output) {
     }
   })
   
+  # Funcion para convertir imagen en formato PNG
+  # y codificada en Base64 desde la página a matriz
+  # con en (0-1)
   imgFromPage <- reactive({
     if(!is.null(input$countjs)){
       imgURL <- str_sub(input$countjs,start = 23)
@@ -53,7 +58,10 @@ shinyServer(function(input, output) {
     return(NULL)
   })
   
-  output$prediccionSVM <-  renderText({
+  # Función para convertir de imagen de pixeles
+  # a resolucion y data.frame necesario para
+  # Predecir
+  imgToPred <- reactive({
     img <- imgFromPage()
     if(!is.null(img)){
       # Resize image
@@ -64,23 +72,27 @@ shinyServer(function(input, output) {
       dim(imgIn) <- NULL
       names(imgIn) <- namesTrain
       imgAsDf <- as.data.frame(t(imgIn))
+      return(imgAsDf)
+    }
+    return(NULL)
+  })
+  
+  # Predicción del SVM
+  output$prediccionSVM <-  renderText({
+    imgAsDf <- imgToPred()
+    if(!is.null(imgAsDf)){
       pred <- kernlab::predict(modSVM,imgAsDf)
       return(levels(pred)[pred])
     }
   })
   
+  # Predicción del GLM
   output$prediccionGLM <-  renderText({
-    img <- imgFromPage()
-    if(!is.null(img)){
-      # Resize image
-      img <- resizeImage(img,28,28)
-      
-      # Convert to dataframe format
-      imgIn <- img
-      dim(imgIn) <- NULL
-      names(imgIn) <- namesTrain
-      imgAsDf <- as.data.frame(t(imgIn))
-      pred <- predict(modGLM_All,imgAsDf, type = "class", s=modGLM_All$lambda[1])
+    imgAsDf <- imgToPred()
+    if(!is.null(imgAsDf)){
+      pred <- predict(modGLM_All,imgAsDf, 
+                      type = "class", 
+                      s=modGLM_All$lambda[1])
       return(pred)
     }
   })
