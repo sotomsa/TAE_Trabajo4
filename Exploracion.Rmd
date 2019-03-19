@@ -396,7 +396,11 @@ Este modelo obtuvo un error del 1.76% de tasa de clasificación incorrecta.
 
 ## Modelo con GLM Multinomial
 
-Hagamos un modelo GLM Multinomial con penalizacion elástica usando glment. Probemos cuanto se demora con el 5% de los datos y usando Lasso (alpha=1)
+Hagamos un modelo GLM Multinomial con penalizacion elástica usando glment. 
+
+### Tiempo Entrenamiento y Prueba en Subconjunto
+
+Probemos cuanto se demora con el 5% de los datos y usando Lasso (alpha=1)
 
 ```{r,eval=FALSE}
 n <- 3000
@@ -431,7 +435,11 @@ errorGLMTest
 ```
 
 
-Esto quiere decir que un modelo con todos los datos se puede demorar una media hora. Carguemos los datos que se usaron en el servidor para que sirvan de base para el resto de modelos.
+Esto quiere decir que un modelo con todos los datos se puede demorar una media hora. 
+
+### Entrenemos en Validación Cruzada
+
+Carguemos los datos que se usaron en el servidor para que sirvan de base para el resto de modelos.
 
 ```{r}
 load("cv_data.RData")
@@ -511,6 +519,8 @@ results
 
 Parece que no hubiera diferencia en el alpha. Escojamos un alpha de 0.5.
 
+### Entrenamiento en Datos de Train
+
 Ahora entrenemos un modelo GLM con estos parametros.
 
 ```{r,eval=FALSE}
@@ -527,15 +537,232 @@ glm_test_time
 
 Se demoró una hora entrenando un modelo GLM en todo el conjunto de entrenamiento
 
+### Rendimiento en Conjunto de Prueba
+
 ```{r,eval=FALSE}
 y.pred <- predict(modGLM_All,test, type = "class", s=modGLM_All$lambda[1])
 errorGLMTest_All <- ce(test$label,y.pred)
 errorGLMTest_All
 ```
 ```{r,include=FALSE}
-#save(errorGLMTest_All,glm_test_time,file = "cache/glm_test_all.RData")
-load("cache/glm_test_all.RData")
+#save(errorGLMTest_All,glm_test_time,file = "cache/glm_pred_test_all.RData")
+load("cache/glm_pred_test_all.RData")
 errorGLMTest_All
 ```
 
-El modelo obtuvo una tasa de clasificación correcta del 88.6% lo que lo pone muy por debajo del SVM.
+El modelo obtuvo una tasa de clasificación incorrecta del 88.6% lo que lo pone muy por debajo del SVM.
+
+## Modelo con CART
+
+Ahora probemos con el arboles de clasificación. Empecemos usando "Gini"
+
+```{r,eval=FALSE}
+library(rpart)
+start <- Sys.time()
+modCARTGini <- rpart::rpart(label ~ . , data = train, method = "class", parms = list(split = "gini"))
+cart_train_gini_time <-  Sys.time() - start
+cart_train_gini_time
+```
+```{r,include=FALSE}
+#save(modCARTGini,cart_train_gini_time,file = "cache/cart_train_gini.RData")
+load("cache/cart_train_gini.RData")
+cart_train_gini_time
+```
+
+Un poco mas de 3 minutos y medio para entrar en todo el conjunto de entrenamiento, lo que lo hace un método bastante rápido.
+
+Ahora hagamos predición con este modelo sobre el conjunto de prueba.
+
+```{r,eval=FALSE}
+start <- Sys.time()
+y.pred <- predict(modCARTGini,test, type = "class")
+errorCARTGini <- ce(test$label,y.pred)
+cart_pred_time_gini <-  Sys.time() - start
+cart_pred_time_gini
+errorCARTGini
+```
+```{r,include=FALSE}
+save(errorCARTGini,cart_pred_time_gini,file = "cache/cart_pred_gini.RData")
+load("cache/cart_pred_gini.RData")
+cart_pred_time_gini
+errorCARTGini
+```
+
+Se demoró 2 segundos prediciendo 10k datos de prueba pero obtuvo una tasa de clasificación incorrecta de solo el 38%
+
+Ahora miremos como nos va usando "information".
+
+```{r,eval=FALSE}
+library(rpart)
+start <- Sys.time()
+modCARTInf <- rpart::rpart(label ~ . , data = train, method = "class", parms = list(split = "information"))
+cart_train_inf_time <-  Sys.time() - start
+cart_train_inf_time
+```
+```{r,include=FALSE}
+#save(modCARTInf,cart_train_inf_time,file = "cache/cart_train_inf.RData")
+load("cache/cart_train_inf.RData")
+cart_train_inf_time
+```
+
+Un poco mas de 3 minutos y medio para entrar en todo el conjunto de entrenamiento.
+
+Ahora hagamos predición con este modelo sobre el conjunto de prueba.
+
+```{r,eval=FALSE}
+start <- Sys.time()
+y.pred <- predict(modCARTInf,test, type = "class")
+errorCARTGInf <- ce(test$label,y.pred)
+cart_pred_time_inf <-  Sys.time() - start
+cart_pred_time_inf
+errorCARTGInf
+```
+```{r,include=FALSE}
+#save(errorCARTGInf,cart_pred_time_inf,file = "cache/cart_pred_inf.RData")
+load("cache/cart_pred_inf.RData")
+cart_pred_time_inf
+errorCARTGInf
+```
+
+Se demoró solo segundo prediciendo pero con un tasa de calsificación incorrecta del 34%. Una tasa aun menor que usando "gini".
+
+## Modelo con Random Forest
+
+Probemos con el paquete "Ranger" que parece tener una implementación más veloz que la version original de "randomForest"
+
+### Tiempo Entrenamiento y Prueba en Subconjunto
+
+```{r,include=FALSE}
+load("data/mnist_data_normalized.RData")
+```
+```{r,eval=FALSE}
+library(ranger)
+d <- train %>% sample_n(3000)
+start <- Sys.time()
+modRF3000 <- ranger::ranger(label ~ . , data = d, num.trees = 500)
+rf_train_3000_time <-  Sys.time() - start
+rf_train_3000_time
+```
+```{r,include=FALSE}
+#save(modRF3000,rf_train_3000_time,file = "cache/rf_train_3000.RData")
+load("cache/rf_train_3000.RData")
+rf_train_3000_time
+```
+
+Se demoró 7 segundos entrenando 500 arboles. Es el mismo tiempo que se demoró en entrenar un árbol con CART.
+
+Ahora hagamos predición con este modelo sobre el conjunto de prueba.
+
+```{r,eval=FALSE}
+start <- Sys.time()
+y.pred <- predict(modRF3000,test, type = "response")
+errorRF3000 <- ce(test$label,y.pred$predictions)
+rf_pred_time_3000 <-  Sys.time() - start
+rf_pred_time_3000
+errorRF3000
+```
+```{r,include=FALSE}
+#save(errorRF3000,rf_pred_time_3000,file = "cache/rf_pred_3000.RData")
+load("cache/rf_pred_3000.RData")
+rf_pred_time_3000
+errorRF3000
+```
+
+Se demoró 1.8 segundos en predecir los 10k datos del conjunto de prueba y tuvo una tasa de clasificación incorrecta del 6.3%.
+
+### Entrenemos en Validación Cruzada
+
+Entrenamiento con 5 pliegues y 2 repeticiones para los parametros num.trees (100,250,500)
+
+```{r,include=FALSE}
+load("cv_data.RData")
+```
+```{r,warning=FALSE,eval=FALSE}
+library(parallel)
+cl <- detectCores()
+library(multidplyr)
+cluster <- create_cluster(cores = cl)
+
+# Agregemos los diferentes modelos a calcular
+modeloRF <- cv_data %>% 
+  crossing(num.trees = c(100,250,500))
+
+group <- rep(1:cl, length.out = nrow(modeloRF))
+modeloRF <- bind_cols(tibble(group), modeloRF)
+
+by_group <- modeloRF %>%
+    partition(group, cluster = cluster) 
+
+by_group %>%
+    cluster_library("tidyverse") %>%
+    cluster_library("ranger") %>%
+    cluster_library("Metrics")
+
+start <- Sys.time()
+modeloRF_parallel <- by_group %>%
+    mutate(modeloRF = map2(analysis,num.trees,~ranger::ranger(label ~ . , 
+                                                 data = .x,
+                                                 num.trees = .y)),
+           y.pred = map2(modeloRF,assessment, ~predict(.x,.y, type = "response")),
+           validate_ce = map2_dbl(y.assessment,y.pred,~ce(.x,(.y)$predictions))) %>%
+    collect() %>%
+    as_tibble()
+time_RF_parallel <- Sys.time() - start
+time_RF_parallel
+```
+```{r,include=FALSE}
+#save(time_RF_parallel,modeloRF,file = "cache/trainModeloRF.RData")
+load("cache/trainModeloRF.RData")
+time_RF_parallel
+```
+
+Solo le tomó 5 minutos calcular estos 30 modelos con 4 procesadores.
+
+Veamos el resultado
+
+```{r}
+results <- modeloRF_parallel %>% 
+  group_by(num.trees,id) %>% 
+  summarise(meanCE = mean(validate_ce)) %>% 
+  group_by(num.trees) %>% 
+  summarise(meanCE = mean(meanCE))
+results
+```
+
+### Entrenamiento en Datos de Train
+
+Ahora entrenemos un modelo de RandomForest con 500 arboles.
+
+```{r,eval=FALSE}
+start <- Sys.time()
+modRF_All <- ranger::ranger(label ~ . , data = train, num.trees = 500)
+rf_test_time <-  Sys.time() - start
+rf_test_time
+```
+```{r,include=FALSE}
+save(modRF_All,rf_test_time,file = "cache/rf_test_all.RData")
+load("cache/rf_test_all.RData")
+rf_test_time
+```
+
+Solo se demoró 5 minutos entrenando 500 arboles en los 60k de datos de entrenamiento. Impresionante.
+
+### Rendimiento en Conjunto de Prueba
+
+```{r,eval=FALSE}
+start <- Sys.time()
+y.pred <- predict(modRF_All,test, type = "response")
+errorRFTest_All <- ce(test$label,y.pred$predictions)
+rf_pred_test_time <-  Sys.time() - start
+errorRFTest_All
+rf_pred_test_time
+
+```
+```{r,include=FALSE}
+#save(errorRFTest_All,rf_pred_test_time,file = "cache/rf_pred_test_all.RData")
+load("cache/rf_pred_test_all.RData")
+errorRFTest_All
+rf_pred_test_time
+```
+
+El modelo obtuvo una tasa de clasificación incorrecta del 2.82% que es levemento menor al SVM. Le tomó 9 segundos en hacer la predicción de los 10k datos del conjunto de prueba on el modelo entrenado en los 60k de datos de entrenamiento.
