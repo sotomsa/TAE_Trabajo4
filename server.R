@@ -6,6 +6,7 @@ library(RCurl)
 library(pixmap)
 library(glmnet)
 library(glmnetUtils)
+library(ranger)
 
 # Funcion para convertir de imagen en Base64 a png
 getImg <- function(txt) {
@@ -94,6 +95,16 @@ shinyServer(function(input, output) {
                       type = "class", 
                       s=modGLM_All$lambda[1])
       return(pred)
+    }
+  })
+  
+  # Predicción del RandomForest
+  output$prediccionRF <-  renderText({
+    imgAsDf <- imgToPred()
+    if(!is.null(imgAsDf)){
+      pred <- predict(modRF_All,imgAsDf, 
+                      type = "response")
+      return(levels(pred$predictions)[pred$predictions])
     }
   })
 

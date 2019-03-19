@@ -41,6 +41,7 @@ shinyUI(fluidPage(
                       actionButton("sendCanvasSimple", "Enviar"),
                       p("Según el modelo SVM, el número ingresado parece un:",textOutput("prediccionSVM")),
                       p("Según el modelo GLM, el número ingresado parece un:",textOutput("prediccionGLM")),
+                      p("Según el modelo RF, el número ingresado parece un:",textOutput("prediccionRF")),
                       plotOutput("dibujo",width = 200, height = 200)
                       )
              )
