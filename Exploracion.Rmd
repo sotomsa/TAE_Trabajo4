@@ -1,7 +1,10 @@
 ---
-title: "Exploracion"
+title: "Prediciendo Números en Imágenes"
 date: "March 5, 2019"
-output: html_document
+output: 
+  html_document:
+    toc: true
+    number_section: true
 ---
 
 ```{r setup, include=FALSE}
@@ -20,7 +23,7 @@ library(scales)
 ```
 
 
-# Cargamos los datos
+# Carga de Datos
 
 Los datos estan en los siguientes dos archivos.
 
@@ -54,7 +57,9 @@ train_raw %>%
 
 Es un dataset bastante balanciado en el número de instancias para cada clase.
 
-```{r}
+Tratemos de visualizar algunos de los datos. Para esto, hagamos una transformación de una parte de los datos.
+
+```{r,warning=FALSE}
 # Transformando los datos para visualización
 pixels_gathered <- train_raw %>%
   head(10000) %>%
@@ -91,72 +96,15 @@ test <- test_raw %>%
   rename(label = X1) %>% 
   mutate(label = factor(label))
 ```
-```{r,include=FALSE}
+```{r,echo=FALSE}
 load(file = "data/mnist_data_normalized.RData")
-```
-
-
-# Tiempos de Entrenamiento y Predicción
-
-Cuando se trabaja con tantos datos, es recomendable muestrear los datos totales y trabajar con menos datos. Primero tratemos de evaluar los tiempos de entrenamiento y predicción para diferentes conjuntos de re-muestreo.
-
-## SVM
-
-Empecemos con un modeo de Máquinas de Soporte Vectorial.
-
-### Pruebas usando datos en dataframe
-
-Se demora 1.3 minutos entrenando un SVM con 6000 muestras. Se demora unos 30 segundos entrenando un modelo con 3000 muestras.
-
-```{r, warning=FALSE, cache=TRUE}
-# Ensayemos los tiempos de entrenamiento
-d <- train %>% sample_n(3000)
-start_time <- Sys.time()
-mod <- kernlab::ksvm(label ~ . , data = d, C = 100)
-end_time <- Sys.time()
-end_time - start_time
-```
-
-Se demora 53 segundos prediciendo 6000 muestras con el modelo entrenado anteriormente. Se demora unos 20 segunos clasificando 3000 muestras.
-
-```{r, cache=TRUE}
-start_time <- Sys.time()
-pred <- kernlab::predict(mod,(d %>% select(-label)))
-end_time <- Sys.time()
-end_time - start_time
-```
-
-### Pruebas usando datos en forma de matriz
-
-Ahora ensayemos convirtiendo los dataframe a matrix primero. 
-
-Con 6000 datos, se demora 1.2 minutos entrenando el SVM vs 1.3 minutos usando un dataframe. Se demora los mismo 30 segundos entrenando un modelo con 3000 datos.
-
-```{r, warning=FALSE, cache=TRUE}
-# ENsayemos los tiempos de entrenamiento
-n <- 3000
-d <- train %>% sample_n(n)
-y <- d$label
-x <- as.matrix(d %>% select(X2:X785))
-start_time <- Sys.time()
-mod <- kernlab::ksvm(x,y, C = 100)
-end_time <- Sys.time()
-end_time - start_time
-```
-
-Se demora los mismos 53 segundos prediciendo 6000 datos y los mismos 20 segundos para predecir 3000 datos
-
-```{r,cache=TRUE}
-start_time <- Sys.time()
-pred <- kernlab::predict(mod,x)
-end_time <- Sys.time()
-end_time - start_time
 ```
 
 # Modelos
 
 ## Creación de Dataframe para Validación Cruzada
-Hagamos explicitos los dataframes de analysis y assessment
+
+Hagamos un dataframe para probar los tiempos de procesamiento con 2 pliegues y 2 repeticiones sobre el 10% de los datos de entrenamiento.
 
 ```{r}
 # Empecemos con una version que use 5 pliegues sobre el 10% de los datos
@@ -174,7 +122,112 @@ cv_data <- vfold_cv(train %>%
 cv_data
 ```
 
-## Configuración Procesamiento en Paralelo
+## Modelo con SVM
+
+### Tiempo de Entrenamiento y Prueba
+
+Evalumos cuando se demora el modelo SVM en entranmiento con un subconjunto de 3000 datos.
+
+```{r, warning=FALSE, eval=FALSE}
+# Ensayemos los tiempos de entrenamiento
+d <- train %>% sample_n(3000)
+start <- Sys.time()
+mod <- kernlab::ksvm(label ~ . , data = d, C = 100)
+end_trai_svm_3000 <- Sys.time() - start
+end_trai_svm_3000
+```
+```{r,echo=FALSE}
+#save(end_trai_svm_3000,file = "cache/train_svm_3000.RData")
+load(file = "cache/train_svm_3000.RData")
+end_trai_svm_3000
+```
+
+Se demora 1.3 minutos entrenando un SVM con 6000 muestras. Se demora unos 23 segundos entrenando un modelo con 3000 muestras.
+
+Ahora miremos el tiempo que demora el modelo para predecir el mismo número de instancias.
+
+```{r, eval=FALSE}
+start <- Sys.time()
+pred <- kernlab::predict(mod,(d %>% select(-label)))
+time_pred_svm_3000 <- Sys.time() - start
+time_pred_svm_3000
+```
+```{r,echo=FALSE}
+#save(time_pred_svm_3000,file = "cache/pred_svm_3000.RData")
+load(file = "cache/pred_svm_3000.RData")
+time_pred_svm_3000
+```
+
+Se demora 53 segundos prediciendo 6000 muestras con el modelo entrenado anteriormente. Se demora unos 23 segunos entrenando con 3000 muestras.
+
+### Modelo sin Paralelizar
+
+Ahora hagamos validacion cruzada para 3 valores del parametro C. En total estamos entrenando 12 modelos en el 10% de los datos.
+
+```{r, warning=FALSE, eval=FALSE}
+# Validemos para 3 valores de C. 
+start <- Sys.time()
+modeloSVM <- cv_data %>% 
+  crossing(C = c(1,10,100)) %>% 
+  mutate(modeloSVM = map2(analysis,C,~kernlab::ksvm(label ~ . , 
+                                                 data = .x, 
+                                                 C = .y)),
+         y.pred = map2(modeloSVM,assessment, ~kernlab::predict(.x,.y)),
+         validate_ce = map2_dbl(y.assessment,y.pred,~ce(.x,.y)))
+SVM_time_serie <- Sys.time() - start
+SVM_time_serie
+```
+```{r, echo=FALSE}
+#modeloSVM <- modeloSVM %>% 
+#  select(id,id2,C,validate_ce)
+#save(modeloSVM,SVM_time_serie,file = "cache/svm_serieResults.RData")
+#save(modeloSVM,SVM_time_serie,file = "cache/svm_serie.RData")
+load("cache/svm_serieResults.RData")
+SVM_time_serie
+```
+
+
+Se demoro 11 miuntos con el 10 porciento de los datos, con 2 pliegues, dos repeticiones y la evalucion de 3 parametros (para un total del 12 modelos). Un promedio de modelo por minuto.
+
+```{r}
+modeloSVM %>% 
+  group_by(C) %>% 
+  summarize(meanCe = mean(validate_ce))
+```
+
+
+### Rendimiento en Test
+
+Escojamos el mejor parametro C del modelo en entrenamiento y miremos como le va al modelo en el conjunto de prueba.
+
+```{r}
+bestC <- modeloSVM %>% 
+  group_by(C) %>% 
+  summarize(meanCe = mean(validate_ce)) %>% 
+  ungroup() %>% 
+  filter( meanCe == min(meanCe) ) %>% 
+  .$C
+bestC
+```
+
+Entrenemos un modelo con el valor de C encontrado anteriormente y examinemos su rendimiento en los dato de prueba.
+
+```{r, warning=FALSE, eval=FALSE}
+d <- train %>% sample_n(3000)
+mod <- kernlab::ksvm(label ~ . , data = d, C = 10)
+pred <- kernlab::predict(mod,(test %>% select(-label)))
+errorSVMTesting <- ce(test$label,pred)
+errorSVMTesting
+```
+```{r,echo=FALSE}
+#save(errorSVMTesting,file = "cache/svm_error_en_test.RData")
+load("cache/svm_error_en_test.RData")
+errorSVMTesting
+```
+
+La tasa 5.3% de clasificación incorrecta que se obtuvo con este modelo es bastante baja, si se considera el hecho de que el entrenamiento se realizo solo el 10 % de los datos.
+
+### Modelo Paralelizado
 
 Ensayemos hacer el procesamiento en paralelo. Esta forma de procesamiento en paralelo está explicada en el siguiente enlace:
 https://www.r-bloggers.com/speed-up-your-code-parallel-processing-with-multidplyr/
@@ -195,15 +248,11 @@ cluster <- create_cluster(cores = cl)
 cluster
 ```
 
-## Modelo con SVM
-
-### Modelo Paralelizado
-
 Ahora creemos un dataframe que tenga los valores de los parametros a probar
 
 ```{r}
 modeloSVM <- cv_data %>% 
-  crossing(C = c(10,100))
+  crossing(C = c(1,10,100))
 ```
 
 Asignemos los datos de cada pliegue a un core
@@ -224,7 +273,7 @@ Parece como el tibble original, pero en realidad, el resultado es en formato par
 
 Ahora, alistemos las funciones, variables y librerias que necesita cada uno de los componentes del cluster
 
-```{r}
+```{r,warning=FALSE}
 by_group %>%
     # Assign libraries
     cluster_library("tidyverse") %>%
@@ -238,10 +287,10 @@ Verifiquemos que quedaron bien asigandas las librearias
 cluster_eval(by_group, search())[[1]]
 ```
 
-Ahora, corramos el codigo en paralelo
+Ahora, corramos el código en paralelo
 
-```{r}
-start <- proc.time() # Start clock
+```{r, eval=FALSE}
+start <- Sys.time() # Start clock
 modeloSVM_parallel <- by_group %>% # Use by_group party_df
     mutate(modeloSVM = map2(analysis,C,~kernlab::ksvm(label ~ . , 
                                                  data = .x, 
@@ -250,11 +299,20 @@ modeloSVM_parallel <- by_group %>% # Use by_group party_df
            validate_ce = map2_dbl(y.assessment,y.pred,~ce(.x,.y))) %>%
     collect() %>% # Special collect() function to recombine partitions
     as_tibble()   # Convert to tibble
-time_elapsed_parallel <- proc.time() - start # End clock
+time_elapsed_parallel <- Sys.time() - start # End clock
+time_elapsed_parallel
+```
+```{r,echo=FALSE}
+#save(modeloSVM_parallel,time_elapsed_parallel,file = "cache/SVM_paralelo_local.RData")
+#modeloSVM_parallel <- modeloSVM_parallel %>% 
+#  select(id,id2,C,validate_ce)
+#save(modeloSVM_parallel,time_elapsed_parallel,file = "cache/SVM_paralelo_localResults.RData")
+load("cache/SVM_paralelo_localResults.RData")
 time_elapsed_parallel
 ```
 
-El mismo proceso se demoró 17 minutos con procesamiento en serie. En los 4 procesadores, el mismo proceso, se demoró solo 8 minutos.
+
+El mismo proceso se demoró 12 minutos con procesamiento en serie. Con los 4 procesadores, el mismo proceso, se demoró solo 7 minutos.
 
 Veamos el resultado
 
@@ -283,79 +341,22 @@ bestC <- results %>%
 bestC
 ```
 
-### Modelo sin Paralelizar
-
-Ahora veamos el mismo procesamiento en serie con un procesador
-
-```{r, warning=FALSE}
-# Validemos para 3 valores de C. 
-# Este procesamiento tomó 17 minutos.
-start_time <- Sys.time()
-modeloSVM <- cv_data %>% 
-  crossing(C = c(1,10,100)) %>% 
-  mutate(modeloSVM = map2(analysis,C,~kernlab::ksvm(label ~ . , 
-                                                 data = .x, 
-                                                 C = .y)),
-         y.pred = map2(modeloSVM,assessment, ~kernlab::predict(.x,.y)),
-         validate_ce = map2_dbl(y.assessment,y.pred,~ce(.x,.y)))
-end_time <- Sys.time()
-end_time - start_time
-```
-
-Ahora se demoro 17 miuntos con el 10 porciento de los datos, 5 pliegues y la evalucion de 3 parametros (para un total del 15 modelos)
-
-```{r}
-modeloSVM %>% 
-  group_by(C) %>% 
-  summarize(meanCe = mean(validate_ce))
-```
-
-
-### Rendimiento en Test
-
-Escojamos el mejor parametro C del modelo en entrenamiento y miremos como le va al modelo en el conjunto de prueba.
-
-```{r}
-bestC <- modeloSVM %>% 
-  group_by(C) %>% 
-  summarize(meanCe = mean(validate_ce)) %>% 
-  ungroup() %>% 
-  filter( meanCe == min(meanCe) ) %>% 
-  .$C
-bestC
-```
-
-Entrenemos un modelo sobre todos los datos de entrenamiento y miremos como le va en testing
-
-```{r, warning=FALSE}
-# Hagamos un modelo con una fracion de los datos de entrenamiento
-d <- train %>% sample_frac(frac)
-start_time <- Sys.time()
-mod <- kernlab::ksvm(label ~ . , data = d, C = bestC)
-pred <- kernlab::predict(mod,(test %>% select(-label)))
-errorSVMTesting <- ce(test$label,pred)
-end_time <- Sys.time()
-end_time - start_time
-```
-
-Se demoró casi 3 minutos entrenando un modelo con el 10% de los datos y encontrando la tasa de clasificación incorrecta en las 10K imágenes del conjunto de prueba. Miremos el error de este modelo
-
-```{r}
-errorSVMTesting
-```
-
-No es un mal error sabiendo que el modelo se entrenos solo con el 10 porciento de los datos.
-
 ### Modelo Entrenado en la Nube
 
-El código para escoger el mejor parametro y el modelo final esta en el archivo ModeloSVM.R
+Dado que correr el SVM con más pliegues es muy costo en memoria y computacionalmente, vamos a probar con el procesamiento en la nube usando 5 pliegues, dos repeticiones y 6 valores del parámetro C. Vamos a usar una instancia m4.16xlarge de Amazon Elastic Computing (EC) para correr estos 60 modelos (5 pliegues x 2 repeticiones x 6 parámetros). Las razones para correr el entramiento de este modelo en la nube fueron:
+
+- El entramiento con el SVM estaba generando unos requerimientos en RAM muy grandes que no lo dejaban correr en la maquina local.
+- El reto de entrenar un modelo en la nube usando una instancia con mucho mayor poder de memoria y procesamiento.
+
+El código que se puso a correr en Amazon EC se puede encontrar en el archivo ModeloSVM.R
 
 #### Entrenamiento en validación cruzada
 
-A continuación estan los datos del modelo entrenado en la nube y guardado en el archivo: SVMTrain_v5_r2_frac10percent.RData
+A continuación estan los datos del modelo entrenado en la nube. 
+
+Miremos los valores de tasa de clasificación incorrecta para diferentes valores de del parámetro C.
 
 ```{r}
-#load("SVMTrain_v5_r2_frac10percent.RData")
 load("SVMTrain_v5_r2_frac10percentRESULTS.RData")
 trainSVMResults %>% 
   group_by(C,id) %>% 
@@ -371,12 +372,20 @@ trainSVMResults %>%
   scale_y_continuous(labels = percent_format())
 ```
 
-En el gráfico, la linea roja es la tasa de media de clasificación incorrecta entre las repeticiones. 
-Como el entrenamiento del SVM en todo el conjunto de entrenamiento es tan costoso en memoria y computacionalmente, carguemos el modelo entrenado en Amazon EC usando todos los datos de entrenamiento. 
+En el gráfico, la linea roja es la tasa media de clasificación incorrecta entre las repeticiones. 
+Se puede ver que las tasas de error para parámetros desde 10 hasta 500 son bastantes parecidas, con 100 como el mejor valor para el parámetro C en estos datos. 
+
+Miremos también cuanto tiempo duró el procesamiento de estos 60 modelos.
+
+```{r}
+time_elapsed_parallel
+```
+
+Los 60 modelos se entrenaron en la nube en 15 minutos. Esto equivale a aproximadamente un cuarto del tiempo que hubiera tomado el procesamiento en serie en este computador
 
 #### Validación
 
-Ahora miremos el tiempo de entrenamiento y error del modelo entrenado en la nube con todos los datos y el parametro C en 100.
+Ahora miremos el tiempo de entrenamiento y el la tasa de clasificación incorrecta que obtuvo el modelo entrenado en la nube con todos los datos de entrenamiento y el parametro C con el valor de 100.
 
 ```{r}
 load("SVMTest_C100_allData.RData")
@@ -384,7 +393,7 @@ load("SVMTest_C100_allData.RData")
 test_time
 ```
 
-Esto quiere decir que se demoro unos 32 minutos el entrenamiento. Lo que es aproximademente 10 veces más de lo que nos demoramos entrenando el mismo modelo con el 10% de los datos. Las pruebas de entrenamiento del modelo con todos los datos en un portatil convencionaal no fue exitoso por la gran cantidad de memoria necesaria.
+Esto quiere decir que se demoro unos 32 minutos el entrenamiento del modelo final usando los 60k datos de entrenamiento. Lo que es aproximademente 10 veces más de lo que nos demoramos entrenando el mismo modelo con el 10% de los datos. Las pruebas de entrenamiento del modelo con todos los datos en un portatil convencional no fue exitoso por la gran cantidad de memoria necesaria.
 
 Ahora miremos el error en el conjunto de prueba
 
@@ -398,9 +407,9 @@ Este modelo obtuvo un error del 1.76% de tasa de clasificación incorrecta.
 
 Hagamos un modelo GLM Multinomial con penalizacion elástica usando glment. 
 
-### Tiempo Entrenamiento y Prueba en Subconjunto
+### Tiempos de Entrenamiento y Prueba
 
-Probemos cuanto se demora con el 5% de los datos y usando Lasso (alpha=1)
+Probemos cuanto se demora con 3000 los datos y usando Lasso (alpha=1)
 
 ```{r,eval=FALSE}
 n <- 3000
@@ -411,13 +420,16 @@ end_glm <- Sys.time()
 glm_train_time <-  end_glm - start_glm
 glm_train_time
 ```
-```{r,include=FALSE}
+```{r,echo=FALSE}
 #save(modGLM,glm_train_time,file = "cache/glm_tiempo_3000.RData")
 load("cache/glm_tiempo_3000.RData")
 glm_train_time
 ```
 
-Ahora como podemos predecir
+
+El GLM se tarda aproximadamente el doble del tiempo para entrenar un modelo con 3000 datos de lo que se demora el SVM.
+
+Ahora ensayemos los tiempos de predicción.
 
 ```{r,eval=FALSE}
 start_glm <- Sys.time()
@@ -427,17 +439,17 @@ glm_test_time <-  Sys.time() - start_glm
 glm_test_time
 errorGLMTest
 ```
-```{r,include=FALSE}
-save(errorGLMTest,glm_test_time,file = "cache/glm_test_3000.RData")
+```{r,echo=FALSE}
+#save(errorGLMTest,glm_test_time,file = "cache/glm_test_3000.RData")
 load("cache/glm_test_3000.RData")
 glm_test_time
 errorGLMTest
 ```
 
 
-Esto quiere decir que un modelo con todos los datos se puede demorar una media hora. 
+Este modelo es bastante rápido al predecir ya que pronostica 10k de datos en 5 segundos pero tiene un tasa de clasificación incorrecta bastante mala con el 89%.
 
-### Entrenemos en Validación Cruzada
+### Entrenamiento con Validación Cruzada
 
 Carguemos los datos que se usaron en el servidor para que sirvan de base para el resto de modelos.
 
@@ -446,9 +458,9 @@ load("cv_data.RData")
 cv_data
 ```
 
-Estos datos corresponden a 5 pliegues y dos repeticiones usando el 10% de los datos.
+Estos datos corresponden a 5 pliegues y 2 repeticiones usando el 10% de los datos.
 
-Ahora entrenemos un GLM en estos datos para 3 valores de alpha (0,0.5,1). Esto nos da un modelo Ridge, otro entre Ridge y Lasso, y finalmente, uno con Lasso.
+Ahora entrenemos un GLM en estos datos para 3 valores de alpha (0,0.5,1). Esto nos da unos modelos Ridge, Elasticnet Ridge-Lasso, y Lasso.
 
 ```{r,warning=FALSE,eval=FALSE}
 library(parallel)
@@ -486,28 +498,21 @@ modeloGLM_parallel <- by_group %>% # Use by_group party_df
 time_GLM_parallel <- Sys.time() - start
 time_GLM_parallel
 ```
-```{r,include=FALSE}
+```{r,echo=FALSE}
+#modeloGLM_parallel <- modeloGLM_parallel %>% 
+#  select(id,id2,alpha,lambda,validate_ce)
 #save(time_GLM_parallel,modeloGLM_parallel,file = "cache/trainModeloGLM.RData")
-load("cache/trainModeloGLM.RData")
+#save(time_GLM_parallel,modeloGLM_parallel,file = "cache/trainModeloGLMResults.RData")
+load("cache/trainModeloGLMResults.RData")
 time_GLM_parallel
 ```
 
 Le tomó una hora y 6 minutos calcular estos 30 modelos con 4 procesadores.
 
-```{r}
-modeloGLM_parallel2 <- modeloGLM_parallel %>%
-  mutate(lambda = map_dbl(modeloGLM,~(.x$lambda[1])),
-           y.pred = map2(modeloGLM,assessment, ~predict(.x,.y, type = "class", s = .x$lambda[1])),
-           validate_ce = map2_dbl(y.assessment,y.pred,~ce(.x,.y))) %>% 
-  select(id,id2,lambda,validate_ce,alpha) %>% 
-  arrange(id,id2,alpha)
-```
-
-
 Veamos el resultado
 
 ```{r}
-results <- modeloGLM_parallel2 %>% 
+results <- modeloGLM_parallel %>% 
   group_by(alpha,id) %>% 
   summarise(meanCE = mean(validate_ce),
             lambda = mean(lambda)) %>% 
@@ -517,9 +522,9 @@ results <- modeloGLM_parallel2 %>%
 results
 ```
 
-Parece que no hubiera diferencia en el alpha. Escojamos un alpha de 0.5.
+Parece que hay una gran cantidad de datos, el parámetro alpha no hiciera mucha diferencia. Escojamos un alpha de 0.5 en el resto de procesamiento.
 
-### Entrenamiento en Datos de Train
+### Entrenamiento del Modelo Final
 
 Ahora entrenemos un modelo GLM con estos parametros.
 
@@ -529,32 +534,34 @@ modGLM_All <- glmnetUtils::glmnet(label ~ . , data = train, family = "multinomia
 glm_test_time <-  Sys.time() - start_glm
 glm_test_time
 ```
-```{r,include=FALSE}
-#save(modGLM_All,glm_test_time,file = "cache/glm_test_all.RData")
+```{r,echo=FALSE}
+# save(modGLM_All,glm_test_time,file = "cache/glm_test_all.RData")
 load("cache/glm_test_all.RData")
 glm_test_time
 ```
 
-Se demoró una hora entrenando un modelo GLM en todo el conjunto de entrenamiento
+El entrenamiento del modelo GLM con los 60k datos duro un poco más de una hora.
 
-### Rendimiento en Conjunto de Prueba
+### Rendimiento en Datos de Prueba
 
 ```{r,eval=FALSE}
 y.pred <- predict(modGLM_All,test, type = "class", s=modGLM_All$lambda[1])
 errorGLMTest_All <- ce(test$label,y.pred)
 errorGLMTest_All
 ```
-```{r,include=FALSE}
+```{r,echo=FALSE}
 #save(errorGLMTest_All,glm_test_time,file = "cache/glm_pred_test_all.RData")
 load("cache/glm_pred_test_all.RData")
 errorGLMTest_All
 ```
 
-El modelo obtuvo una tasa de clasificación incorrecta del 88.6% lo que lo pone muy por debajo del SVM.
+El modelo obtuvo una tasa de clasificación incorrecta del 88.6%. Esta tasa es bastante baja.
 
 ## Modelo con CART
 
-Ahora probemos con el arboles de clasificación. Empecemos usando "Gini"
+###  Modo Gini
+
+Ahora probemos con el arboles de clasificación. Empecemos usando la medida "Gini" para escoger la variable de división.
 
 ```{r,eval=FALSE}
 library(rpart)
@@ -563,7 +570,7 @@ modCARTGini <- rpart::rpart(label ~ . , data = train, method = "class", parms = 
 cart_train_gini_time <-  Sys.time() - start
 cart_train_gini_time
 ```
-```{r,include=FALSE}
+```{r,echo=FALSE}
 #save(modCARTGini,cart_train_gini_time,file = "cache/cart_train_gini.RData")
 load("cache/cart_train_gini.RData")
 cart_train_gini_time
@@ -581,16 +588,18 @@ cart_pred_time_gini <-  Sys.time() - start
 cart_pred_time_gini
 errorCARTGini
 ```
-```{r,include=FALSE}
-save(errorCARTGini,cart_pred_time_gini,file = "cache/cart_pred_gini.RData")
+```{r,echo=FALSE}
+#save(errorCARTGini,cart_pred_time_gini,file = "cache/cart_pred_gini.RData")
 load("cache/cart_pred_gini.RData")
 cart_pred_time_gini
 errorCARTGini
 ```
 
-Se demoró 2 segundos prediciendo 10k datos de prueba pero obtuvo una tasa de clasificación incorrecta de solo el 38%
+Se demoró 2 segundos prediciendo 10k datos de prueba y obtuvo una tasa de clasificación incorrecta de solo el 38%. Esta tasa de clasificación incorrecto también es bastante alta (mala).
 
-Ahora miremos como nos va usando "information".
+###  Modo Information
+
+Ahora examinemos el modelo usando la medida "information".
 
 ```{r,eval=FALSE}
 library(rpart)
@@ -599,7 +608,7 @@ modCARTInf <- rpart::rpart(label ~ . , data = train, method = "class", parms = l
 cart_train_inf_time <-  Sys.time() - start
 cart_train_inf_time
 ```
-```{r,include=FALSE}
+```{r,echo=FALSE}
 #save(modCARTInf,cart_train_inf_time,file = "cache/cart_train_inf.RData")
 load("cache/cart_train_inf.RData")
 cart_train_inf_time
@@ -617,20 +626,20 @@ cart_pred_time_inf <-  Sys.time() - start
 cart_pred_time_inf
 errorCARTGInf
 ```
-```{r,include=FALSE}
+```{r,echo=FALSE}
 #save(errorCARTGInf,cart_pred_time_inf,file = "cache/cart_pred_inf.RData")
 load("cache/cart_pred_inf.RData")
 cart_pred_time_inf
 errorCARTGInf
 ```
 
-Se demoró solo segundo prediciendo pero con un tasa de calsificación incorrecta del 34%. Una tasa aun menor que usando "gini".
+Se demoró solo segundo prediciendo pero con un tasa de calsificación incorrecta del 34%. Una tasa levemente mejor que usando "gini".
 
 ## Modelo con Random Forest
 
-Probemos con el paquete "Ranger" que parece tener una implementación más veloz que la version original de "randomForest"
+Probemos la implementación de RandomForest del paquete "Ranger" que parece tener una implementación más veloz que la version original.
 
-### Tiempo Entrenamiento y Prueba en Subconjunto
+### Tiempo de Entrenamiento y Prueba
 
 ```{r,include=FALSE}
 load("data/mnist_data_normalized.RData")
@@ -643,13 +652,13 @@ modRF3000 <- ranger::ranger(label ~ . , data = d, num.trees = 500)
 rf_train_3000_time <-  Sys.time() - start
 rf_train_3000_time
 ```
-```{r,include=FALSE}
+```{r,echo=FALSE}
 #save(modRF3000,rf_train_3000_time,file = "cache/rf_train_3000.RData")
 load("cache/rf_train_3000.RData")
 rf_train_3000_time
 ```
 
-Se demoró 7 segundos entrenando 500 arboles. Es el mismo tiempo que se demoró en entrenar un árbol con CART.
+Se demoró 7 segundos entrenando 500 arboles en 3000 datos. Es el mismo tiempo que se demoró en entrenar un árbol con CART.
 
 Ahora hagamos predición con este modelo sobre el conjunto de prueba.
 
@@ -661,18 +670,18 @@ rf_pred_time_3000 <-  Sys.time() - start
 rf_pred_time_3000
 errorRF3000
 ```
-```{r,include=FALSE}
+```{r,echo=FALSE}
 #save(errorRF3000,rf_pred_time_3000,file = "cache/rf_pred_3000.RData")
 load("cache/rf_pred_3000.RData")
 rf_pred_time_3000
 errorRF3000
 ```
 
-Se demoró 1.8 segundos en predecir los 10k datos del conjunto de prueba y tuvo una tasa de clasificación incorrecta del 6.3%.
+Se demoró 1.8 segundos en predecir los 10k datos del conjunto de prueba y obtuvo una tasa de clasificación incorrecta del 6.3%.
 
-### Entrenemos en Validación Cruzada
+### Entrenamiento con Validación Cruzada
 
-Entrenamiento con 5 pliegues y 2 repeticiones para los parametros num.trees (100,250,500)
+Entrenamiento con 5 pliegues y 2 repeticiones para el parámetro num.trees con valores (100,250,500)
 
 ```{r,include=FALSE}
 load("cv_data.RData")
@@ -685,7 +694,7 @@ cluster <- create_cluster(cores = cl)
 
 # Agregemos los diferentes modelos a calcular
 modeloRF <- cv_data %>% 
-  crossing(num.trees = c(100,250,500))
+  crossing(num.trees = c(100,250,500,1000))
 
 group <- rep(1:cl, length.out = nrow(modeloRF))
 modeloRF <- bind_cols(tibble(group), modeloRF)
@@ -710,13 +719,16 @@ modeloRF_parallel <- by_group %>%
 time_RF_parallel <- Sys.time() - start
 time_RF_parallel
 ```
-```{r,include=FALSE}
-#save(time_RF_parallel,modeloRF,file = "cache/trainModeloRF.RData")
-load("cache/trainModeloRF.RData")
+```{r,echo=FALSE}
+#modeloRF_parallel <- modeloRF_parallel %>% 
+#  select(id,id2,num.trees,validate_ce)
+#save(time_RF_parallel,modeloRF_parallel,file = "cache/trainModeloRF.RData")
+#save(time_RF_parallel,modeloRF_parallel,file = "cache/trainModeloRFResults.RData")
+load("cache/trainModeloRFResults.RData")
 time_RF_parallel
 ```
 
-Solo le tomó 5 minutos calcular estos 30 modelos con 4 procesadores.
+El procesamiento de 40 modelos con 4 procesadores tomó casi 10 minutos.
 
 Veamos el resultado
 
@@ -729,8 +741,24 @@ results <- modeloRF_parallel %>%
 results
 ```
 
-### Entrenamiento en Datos de Train
+Veamos los valores gráficamente
 
+```{r}
+modeloRF_parallel %>% 
+  group_by(num.trees,id) %>% 
+  summarise(meanCE = mean(validate_ce)) %>% 
+  ggplot(aes(num.trees,meanCE)) +
+  geom_point() +
+  stat_summary(fun.y = mean, geom = "point", col = "red") +
+  stat_summary(fun.y = mean, geom = "line", col = "red", aes(group = 1)) +
+  labs(title = "Tasa Clasificación Incorrecta en 2 Repeticiones",
+       x = "Valor Parametro num.trees",
+       y = "Tasa de Clasificación Incorrecta")
+```
+
+Parecieran faltar los puntos de las repeticiones cuando num.trees es igual a 1000 pero la realidad es que ambas repeticiones obtuvieron la misma tasa de clasificación incorrecta y eso hace que los 3 puntos queden solapados.
+
+### Entrenamiento del Modelo Final
 Ahora entrenemos un modelo de RandomForest con 500 arboles.
 
 ```{r,eval=FALSE}
@@ -739,15 +767,15 @@ modRF_All <- ranger::ranger(label ~ . , data = train, num.trees = 500)
 rf_test_time <-  Sys.time() - start
 rf_test_time
 ```
-```{r,include=FALSE}
-save(modRF_All,rf_test_time,file = "cache/rf_test_all.RData")
+```{r,echo=FALSE}
+#save(modRF_All,rf_test_time,file = "cache/rf_test_all.RData")
 load("cache/rf_test_all.RData")
 rf_test_time
 ```
 
 Solo se demoró 5 minutos entrenando 500 arboles en los 60k de datos de entrenamiento. Impresionante.
 
-### Rendimiento en Conjunto de Prueba
+### Rendimiento en Datos de Prueba
 
 ```{r,eval=FALSE}
 start <- Sys.time()
@@ -758,11 +786,341 @@ errorRFTest_All
 rf_pred_test_time
 
 ```
-```{r,include=FALSE}
+```{r,echo=FALSE}
 #save(errorRFTest_All,rf_pred_test_time,file = "cache/rf_pred_test_all.RData")
 load("cache/rf_pred_test_all.RData")
 errorRFTest_All
 rf_pred_test_time
 ```
 
-El modelo obtuvo una tasa de clasificación incorrecta del 2.82% que es levemento menor al SVM. Le tomó 9 segundos en hacer la predicción de los 10k datos del conjunto de prueba on el modelo entrenado en los 60k de datos de entrenamiento.
+El modelo obtuvo una tasa de clasificación incorrecta del 2.82% que es levemente peor a la tasa del SVM que fue del 1.7%. Sin embargo, los tiempo de entrenamiento mucho más cortos. 
+
+La predicción de los 10k datos del conjunto de pruebala hizo en solo 9 segundos.
+
+## Model con Redes Neuronales
+
+Modelo de redes neuronales con el modelo mxnet. Carguemos la libreria
+
+```{r}
+library(mxnet)
+```
+
+Arquitectura del modelo
+
+```{r}
+data <- mx.symbol.Variable("data")
+fc1 <- mx.symbol.FullyConnected(data, name="fc1", num_hidden=128)
+act1 <- mx.symbol.Activation(fc1, name="relu1", act_type="relu")
+fc2 <- mx.symbol.FullyConnected(act1, name="fc2", num_hidden=64)
+act2 <- mx.symbol.Activation(fc2, name="relu2", act_type="relu")
+fc3 <- mx.symbol.FullyConnected(act2, name="fc3", num_hidden=10)
+softmax <- mx.symbol.SoftmaxOutput(fc3, name="sm")
+```
+
+Procesamiento en CPU
+
+```{r}
+devices <- mx.cpu() # Esto es para utilizar el procesador en lugar de la tarjeta gráfica.
+```
+
+### Tiempos de Entrenamiento y Prueba
+
+Entrenamiento
+
+```{r,eval=FALSE}
+load(file = "data/mnist_data_normalized.RData")
+```
+```{r,eval=FALSE}
+start <- Sys.time()
+mx.set.seed(0)
+modeloNN <- mx.model.FeedForward.create(softmax, X=data.matrix(train[,-1]), y=(as.integer(train$label)-1),
+                                     ctx=devices, num.round=10, array.batch.size=100,
+                                     learning.rate=0.07	, momentum=0.9,  eval.metric=mx.metric.accuracy,
+                                     initializer=mx.init.uniform(0.07),
+                                     epoch.end.callback=mx.callback.log.train.metric(100))
+time_train_NN <- Sys.time() - start
+time_train_NN
+```
+```{r,echo=FALSE}
+# Paso necesario para guardar el modelo
+# https://github.com/apache/incubator-mxnet/issues/3697
+#modeloNN <- mx.serialize(modeloNN)
+#save(modeloNN,time_train_NN,file = "cache/train_nn.RData")
+load("cache/train_nn.RData")
+time_train_NN
+```
+
+Un 50 segundos para entrenar el modelo en los 60k datos de entrenamiento. Esto quiere decir que un modelo con 3000 datos se entrena en unos 3 segundos bajo la configuración actual
+
+Prediccion
+
+```{r,eval=FALSE}
+start <- Sys.time()
+test_y_pred_matrix<- predict(modeloNN,X=test_x) 
+test_y_pred <- max.col(t(test_y_pred_matrix)) - 1
+errorNN <- ce(test_y,test_y_pred)
+time_pred_NN <- Sys.time() - start
+time_pred_NN
+errorNN
+```
+```{r,echo=FALSE}
+#save(time_pred_NN,errorNN,file = "cache/pred_nn.RData")
+load("cache/pred_nn.RData")
+time_pred_NN
+errorNN
+```
+
+Predice los 10k datos del conjunto prueba en menos de un segundo y con una tasa de clasificación incorrecta del 2.51%
+
+### Entrenamiento con Validación Cruzada
+
+Creemos una validación cruzada con 10 pliegues sobre 10 porciento de los datos.
+
+```{r, eval=FALSE,echo=FALSE}
+load(file = "data/mnist_data_normalized.RData")
+```
+```{r,eval=FALSE}
+set.seed(71265)
+cv_data_nn <- train %>%
+  sample_frac(0.1) %>%
+  vfold_cv(v=10)  %>% 
+  mutate(analysis = map(splits,~analysis(.x)),
+         assessment = map(splits,~assessment(.x)),
+         y.assessment = map(assessment,~factor(.x$label)),
+         data = map(analysis,~data.matrix(.x)))
+```
+```{r,echo=FALSE,eval=FALSE}
+#save(cv_data_nn,file = "cache/cv_data_nn.RData")
+load("cache/cv_data_nn.RData")
+```
+
+Dado que la libreria MX ya hace uso de las capacidades multi-core del computador, no es necesario hacer un procesamiento en paralelo para la validación cruzada.
+
+```{r,eval=FALSE}
+start <- Sys.time()
+modeloNN_parallel <- cv_data_nn  %>%
+    mutate(modeloNN = map(data,~mx.model.FeedForward.create(softmax,
+                                                            X=.x[,-1],
+                                                            y=(.x[,1]-1),
+                                                            ctx=devices,
+                                                            num.round=10,
+                                                            array.batch.size=100,
+                                                            learning.rate=0.07,
+                                                            momentum=0.9,
+                                                            eval.metric=mx.metric.accuracy,
+                                                            initializer=mx.init.uniform(0.07))),
+           y.pred_matrix = map2(modeloNN,assessment, ~predict(.x, X = data.matrix(.y[,-1]))),
+           y.pred = map(y.pred_matrix,~(max.col(t(.x)) - 1)),
+           validate_ce = map2_dbl(y.assessment,y.pred,~ce(.x,.y))) %>% 
+  select(id,validate_ce)
+time_NN_parallel <- Sys.time() - start
+time_NN_parallel
+```
+```{r,echo=FALSE}
+#save(time_NN_parallel,modeloNN_parallel,file = "cache/trainModeloNN.RData")
+load("cache/trainModeloNN.RData")
+time_NN_parallel
+```
+
+Se demora 45 segundos para entrenar estos 10 modelos sobre el 10% de los datos de entrenamiento. No es mucho tiempo, lo que nos permitirá tratar de optimizarla un poco más.
+
+Calculemos la tasa base antes de optimizar la red neuronal
+
+```{r}
+mean(modeloNN_parallel$validate_ce)
+```
+
+La tasa base es del 6.15%
+
+#### Optimizando la tasa de aprendizaje
+
+Recomiendan optimizar primero la tasa de aprendizaje mientras dejamos el resto igual.
+
+```{r, eval=FALSE,echo=FALSE}
+load("cache/trainModeloNN.RData")
+```
+```{r,eval=FALSE}
+set.seed(0)
+learning.rates <- c(0.0001,0.001,0.01,0.1,1)
+start <- Sys.time()
+modeloNN_LR <- cv_data_nn  %>%
+  crossing(learning.rate = learning.rates) %>% 
+    mutate(modeloNN = map2(data,learning.rate,~mx.model.FeedForward.create(softmax,
+                                                            X=.x[,-1],
+                                                            y=(.x[,1]-1),
+                                                            ctx=devices,
+                                                            num.round=10,
+                                                            array.batch.size=100,
+                                                            learning.rate=.y,
+                                                            momentum=0.9,
+                                                            eval.metric=mx.metric.accuracy,
+                                                            initializer=mx.init.uniform(0.07))),
+           y.pred_matrix = map2(modeloNN,assessment, ~predict(.x, X = data.matrix(.y[,-1]))),
+           y.pred = map(y.pred_matrix,~(max.col(t(.x)) - 1)),
+           validate_ce = map2_dbl(y.assessment,y.pred,~ce(.x,.y))) %>% 
+  select(id,validate_ce,learning.rate)
+time_NN_LR <- Sys.time() - start
+time_NN_LR
+```
+```{r,echo=FALSE}
+#save(time_NN_LR,modeloNN_LR,file = "cache/trainModeloNN_LR.RData")
+load("cache/trainModeloNN_LR.RData")
+time_NN_LR
+```
+
+```{r}
+modeloNN_LR %>% 
+  ggplot(aes(learning.rate,validate_ce)) +
+  stat_summary(fun.y = mean, geom = "point") +
+  stat_summary(fun.y = mean, geom = "line") +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar") +
+  scale_x_log10() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(title = "Tendencia de la Tasa de Aprendizaje",
+       y = "Tasa de Clasificación Incorrecta")
+```
+
+#### Optimizando el Batch Size
+
+Ahora continuemos con el Batch Size
+
+```{r, eval=FALSE,echo=FALSE}
+load("cache/trainModeloNN.RData")
+```
+```{r,eval=FALSE}
+set.seed(0)
+batch.sizes <- c(10,50,100,500,1000)
+start <- Sys.time()
+modeloNN_BS <- cv_data_nn  %>%
+  crossing(batch.size = batch.sizes) %>% 
+    mutate(modeloNN = map2(data,batch.size,~mx.model.FeedForward.create(softmax,
+                                                            X=.x[,-1],
+                                                            y=(.x[,1]-1),
+                                                            ctx=devices,
+                                                            num.round=10,
+                                                            array.batch.size=.y,
+                                                            learning.rate=0.1,
+                                                            momentum=0.9,
+                                                            eval.metric=mx.metric.accuracy,
+                                                            initializer=mx.init.uniform(0.07))),
+           y.pred_matrix = map2(modeloNN,assessment, ~predict(.x, X = data.matrix(.y[,-1]))),
+           y.pred = map(y.pred_matrix,~(max.col(t(.x)) - 1)),
+           validate_ce = map2_dbl(y.assessment,y.pred,~ce(.x,.y))) %>% 
+  select(id,validate_ce,batch.size)
+time_NN_BS <- Sys.time() - start
+time_NN_BS
+```
+```{r,echo=FALSE}
+#save(modeloNN_BS,time_NN_BS,file = "cache/trainModeloNN_BS.RData")
+load("cache/trainModeloNN_BS.RData")
+time_NN_BS
+```
+
+```{r}
+modeloNN_BS %>% 
+  ggplot(aes(batch.size,validate_ce)) +
+  stat_summary(fun.y = mean, geom = "point") +
+  stat_summary(fun.y = mean, geom = "line") +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar") +
+  scale_x_log10() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(title = "Tendencia del Tamaño de los lotes",
+       y = "Tasa de Clasificación Incorrecta")
+```
+
+100 sigue siendo el mejor valor para el tamaño del lote.
+
+#### Optimizando el Numero Epochs
+
+Ahora continuemos con el número de iteraciones
+
+```{r, eval=FALSE,echo=FALSE}
+load("cache/trainModeloNN.RData")
+```
+```{r,eval=FALSE}
+set.seed(0)
+epochs <- c(5,10,20,50,100)
+start <- Sys.time()
+modeloNN_EP <- cv_data_nn  %>%
+  crossing(epoch = epochs) %>% 
+    mutate(modeloNN = map2(data,epoch,~mx.model.FeedForward.create(softmax,
+                                                            X=.x[,-1],
+                                                            y=(.x[,1]-1),
+                                                            ctx=devices,
+                                                            num.round=.y,
+                                                            array.batch.size=100,
+                                                            learning.rate=0.1,
+                                                            momentum=0.9,
+                                                            eval.metric=mx.metric.accuracy,
+                                                            initializer=mx.init.uniform(0.07))),
+           y.pred_matrix = map2(modeloNN,assessment, ~predict(.x, X = data.matrix(.y[,-1]))),
+           y.pred = map(y.pred_matrix,~(max.col(t(.x)) - 1)),
+           validate_ce = map2_dbl(y.assessment,y.pred,~ce(.x,.y))) %>% 
+  select(id,validate_ce,epoch)
+time_NN_EP <- Sys.time() - start
+time_NN_EP
+```
+```{r,echo=FALSE}
+#save(modeloNN_EP,time_NN_EP,file = "cache/trainModeloNN_EP.RData")
+load("cache/trainModeloNN_EP.RData")
+time_NN_BS
+```
+
+```{r}
+modeloNN_EP %>% 
+  ggplot(aes(epoch,validate_ce)) +
+  stat_summary(fun.y = mean, geom = "point") +
+  stat_summary(fun.y = mean, geom = "line") +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar") +
+  scale_x_log10() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(title = "Tendencia del Número de Iteraciones",
+       y = "Tasa de Clasificación Incorrecta")
+```
+
+Y 100 epochs hace que mejore aun más
+
+### Entrenamiento del Modelo Final
+
+```{r,eval=FALSE}
+load(file = "data/mnist_data_normalized.RData")
+```
+```{r,eval=FALSE}
+start <- Sys.time()
+mx.set.seed(0)
+modeloNNF <- mx.model.FeedForward.create(softmax, X=data.matrix(train[,-1]), y=(as.integer(train$label)-1),
+                                     ctx=devices, num.round=100, array.batch.size=100,
+                                     learning.rate=0.1	, momentum=0.9,  eval.metric=mx.metric.accuracy,
+                                     initializer=mx.init.uniform(0.07),
+                                     epoch.end.callback=mx.callback.log.train.metric(100))
+time_train_NN_Final <- Sys.time() - start
+time_train_NN_Final
+```
+```{r,echo=FALSE}
+# Paso necesario para guardar el modelo
+# https://github.com/apache/incubator-mxnet/issues/3697
+#modeloNNF <- mx.serialize(modeloNNF)
+#save(modeloNNF,time_train_NN_Final,file = "cache/train_nn_final.RData")
+load("cache/train_nn_final.RData")
+time_train_NN_Final
+```
+
+### Rendimiento en Datos de Prueba
+
+```{r,eval=FALSE}
+start <- Sys.time()
+test_y_pred_matrix<- predict(modeloNNF,X=data.matrix(test[,-1])) 
+test_y_pred <- max.col(t(test_y_pred_matrix)) - 1
+errorNNF <- ce(test$label,test_y_pred)
+time_pred_NNF <- Sys.time() - start
+time_pred_NNF
+errorNNF
+```
+```{r,echo=FALSE}
+#save(time_pred_NNF,errorNNF,file = "cache/pred_nnF.RData")
+load("cache/pred_nnF.RData")
+time_pred_NNF
+errorNNF
+```
+
+No tuvimos una mejora sustantiva.
