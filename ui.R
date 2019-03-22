@@ -40,8 +40,11 @@ shinyUI(fluidPage(
                       actionButton("clearCanvasSimple", "Borrar"),
                       actionButton("sendCanvasSimple", "Enviar"),
                       p("Según el modelo SVM, el número ingresado parece un:",textOutput("prediccionSVM")),
-                      p("Según el modelo GLM, el número ingresado parece un:",textOutput("prediccionGLM")),
+                      #p("Según el modelo NN, el número ingresado parece un:",textOutput("prediccionNN")),
                       p("Según el modelo RF, el número ingresado parece un:",textOutput("prediccionRF")),
+                      p("Según el modelo CART, el número ingresado parece un:",textOutput("prediccionCART")),
+                      p("Según el modelo GLM, el número ingresado parece un:",textOutput("prediccionGLM")),
+                      p("NO fue posible cargar la libreria mxnet en ShinyApps.io para predecir con la Red Neuronal."),
                       plotOutput("dibujo",width = 200, height = 200)
                       )
              )

@@ -34,6 +34,9 @@ cv_data <- vfold_cv(train,
          assessment = map(splits,~assessment(.x)),
          y.assessment = map(assessment,~factor(.x$label)))
 
+# Guardemos el cv_data
+save(cv_data,file = "cv_data.RData")
+
 # Valores de C a probar
 modeloSVM <- cv_data %>% 
   crossing(C = c(1,5,10,50,100,500))

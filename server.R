@@ -7,6 +7,7 @@ library(pixmap)
 library(glmnet)
 library(glmnetUtils)
 library(ranger)
+#library(mxnet)
 
 # Funcion para convertir de imagen en Base64 a png
 getImg <- function(txt) {
@@ -105,6 +106,27 @@ shinyServer(function(input, output) {
       pred <- predict(modRF_All,imgAsDf, 
                       type = "response")
       return(levels(pred$predictions)[pred$predictions])
+    }
+  })
+  
+  # # Predicción del NN
+  # output$prediccionNN <-  renderText({
+  #   imgAsDf <- imgToPred()
+  #   if(!is.null(imgAsDf)){
+  #     imgAsDf <- as.matrix(imgAsDf)
+  #     pred_all <- predict(modeloNNF,X=imgAsDf)
+  #     pred <- which(pred_all==max(pred_all))-1
+  #     return(pred)
+  #   }
+  # })
+  
+  # Predicción del CART
+  output$prediccionCART <-  renderText({
+    imgAsDf <- imgToPred()
+    if(!is.null(imgAsDf)){
+      pred <- predict(modCARTInf,imgAsDf, 
+                      type = "class")
+      return(levels(pred)[pred])
     }
   })
 

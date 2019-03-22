@@ -200,7 +200,7 @@ function redrawSimple()
 {
 	clearCanvas_simple();
 	
-	var radius = 2;
+	var radius = 4;
 	context_simple.strokeStyle = "#000000";
 	context_simple.lineJoin = "round";
 	context_simple.lineWidth = radius;
