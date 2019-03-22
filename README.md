@@ -16,5 +16,5 @@ En el siguiente link:
 Podras encontrar una aplicación Web (Shiny) donde puedes probar los modelos de clasificación de números desde el navegador.
 
 NOTAS: 
-- Por Ahora, esta aplicación solo cuenta con la clasificación de números usando un SVM.
+- Por Ahora, esta aplicación no cuenta con la predicción de las Redes Neuronales por que ShinyApps.io no permite cargar paquetes de repositorios que sean diferentes a CRAN o GitHub.
 - El canvas para dibujar los números en la aplicación esta basada en: http://www.williammalone.com/articles/create-html5-canvas-javascript-drawing-app/
