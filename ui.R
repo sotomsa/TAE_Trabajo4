@@ -46,6 +46,7 @@ shinyUI(fluidPage(
                       p("Según el modelo GLM, el número ingresado parece un:",textOutput("prediccionGLM")),
                       p("NO fue posible cargar la libreria mxnet en ShinyApps.io para predecir con la Red Neuronal."),
                       plotOutput("dibujo",width = 200, height = 200)
-                      )
-             )
-  ))
+                      ),
+             tabPanel("Exploración y Modelación",value=2,
+                      htmlOutput("reporte"))
+  )))

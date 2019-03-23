@@ -2,7 +2,7 @@ load("SVMTest_C100_allData.RData")
 load(file="namesTrain.RData")
 load("glm_test_all.RData")
 load("rf_test_all.RData")
-load("train_nn_final.RData")
+#load("train_nn_final.RData")
 load("cart_train_inf.RData")
 
 
@@ -21,4 +21,5 @@ getImg <- function(txt) {
   return(img)
 }
 
-enlaceReporte <- "https://drive.google.com/open?id=1_GMlXvtBudmFCKSkl8fTfIMm_gUASQRd"
+enlaceReporte <- "https://sotomsa.shinyapps.io/Trabajo4/Reporte.pdf"
+enlaceReporteHTML <- "https://sotomsa.shinyapps.io/Trabajo4/Exploracion.html"

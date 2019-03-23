@@ -129,5 +129,13 @@ shinyServer(function(input, output) {
       return(levels(pred)[pred])
     }
   })
+  
+  # Enlace al reporte en HTML
+  output$reporte <- renderUI({
+    tags$iframe(width="95%",
+                style="position: absolute; !important",
+                src=enlaceReporteHTML,
+                height="90%")
+  })
 
 })
