@@ -395,6 +395,20 @@ test_time
 
 Esto quiere decir que se demoro unos 32 minutos el entrenamiento del modelo final usando los 60k datos de entrenamiento. Lo que es aproximademente 10 veces más de lo que nos demoramos entrenando el mismo modelo con el 10% de los datos. Las pruebas de entrenamiento del modelo con todos los datos en un portatil convencional no fue exitoso por la gran cantidad de memoria necesaria.
 
+Cuando se demora el modelo calculado con los 60k datos del entrenamiento en predecir los 10k datos de prueba
+
+```{r,eval=FALSE}
+start <- Sys.time()
+pred <- kernlab::predict(modSVM,test)
+time_pred_svm_all <- Sys.time() - start
+time_pred_svm_all
+```
+```{r,echo=FALSE}
+#save(time_pred_svm_all,file = "cache/time_pred_svm_all.RData")
+load(file = "cache/time_pred_svm_all.RData")
+time_pred_svm_all
+```
+
 Ahora miremos el error en el conjunto de prueba
 
 ```{r}
@@ -545,13 +559,17 @@ El entrenamiento del modelo GLM con los 60k datos duro un poco más de una hora.
 ### Rendimiento en Datos de Prueba
 
 ```{r,eval=FALSE}
+start <- Sys.time()
 y.pred <- predict(modGLM_All,test, type = "class", s=modGLM_All$lambda[1])
 errorGLMTest_All <- ce(test$label,y.pred)
+GLMtime_pred_all <- Sys.time() - start
+GLMtime_pred_all
 errorGLMTest_All
 ```
 ```{r,echo=FALSE}
-#save(errorGLMTest_All,glm_test_time,file = "cache/glm_pred_test_all.RData")
+#save(errorGLMTest_All,GLMtime_pred_all,file = "cache/glm_pred_test_all.RData")
 load("cache/glm_pred_test_all.RData")
+GLMtime_pred_all
 errorGLMTest_All
 ```
 
